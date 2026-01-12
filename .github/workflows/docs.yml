@@ -1,0 +1,105 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '**/*.rst'
+      - '**/*.md'
+      - 'pyproject.toml'
+      - '.readthedocs.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '**/*.rst'
+      - '**/*.md'
+      - 'pyproject.toml'
+      - '.readthedocs.yaml'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '^3.10'
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-poetry-v2-${{ hashFiles('**/poetry.lock', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-v2-
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry --version
+
+      - name: Configure Poetry
+        run: |
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Install Dependencies
+        run: |
+          poetry install --with docs --verbose
+
+      - name: Check Documentation Quality
+        run: |
+          cd docs
+          poetry run doc8 . || echo "Documentation quality check found issues"
+          poetry run make linkcheck || echo "Link check found broken links"
+        continue-on-error: true
+
+      - name: Build Documentation
+        run: |
+          cd docs
+          poetry run make SPHINXOPTS="-v" html
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+          SPHINX_DEBUG: 1
+
+      - name: Check Build Output
+        if: always()
+        run: |
+          echo "Checking docs build directory..."
+          cd docs/_build/html
+          ls -la
+          if [ -f "index.html" ]; then
+            echo "Documentation built successfully"
+          else
+            echo "Documentation build failed - no index.html"
+            exit 1
+          fi
+
+      - name: Upload Documentation Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/_build/html/
+          compression-level: 0
+
+      - name: Comment PR with documentation preview
+        if: github.event_name == 'pull_request' && success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const artifactUrl = `https://github.com/\${{github.context.repo.owner}}/\${{github.context.repo.repo}}/actions/runs/\${{github.context.runId}}`;
+            const body = `📚 Documentation preview is available! [Download the artifact](${artifactUrl}) and view locally.`;
+            github.rest.issues.createComment({
+              issue_number: ${{ github.context.issue.number }},
+              owner: ${{ github.context.repo.owner  }},
+              repo: ${{ github.context.repo.repo }},
+              body: body
+            });

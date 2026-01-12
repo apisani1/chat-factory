@@ -1,0 +1,222 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "chat-factory"
+version = "0.0.0"
+description = "A short description of the project"
+authors = [{ name = "Antonio Pisani", email = "antonio.pisani@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv (>=1.2.1,<2.0.0)",
+    "pydantic (>=2.12.5,<3.0.0)",
+    "mcp-multi-server (>=1.0.0,<2.0.0)",
+    "anthropic (>=0.75.0,<0.76.0)",
+    "openai (>=2.15.0,<3.0.0)",
+    "pypdf (>=6.6.0,<7.0.0)",
+    "types-requests (>=2.32.4.20260107,<3.0.0.0)",
+    "rich (>=14.2.0,<15.0.0)",
+    "pillow (>=12.1.0,<13.0.0)",
+    "gradio (>=6.3.0,<7.0.0)",
+]
+
+[project.scripts]
+chat_factory = "chat_factory.main:main"
+
+[project.urls]
+"Source Code" = "https://github.com/apisani1/chat-factory"
+"Release Notes" = "https://github.com/apisani1/chat-factory/releases"
+"Documentation" = "https://chat-factory.readthedocs.io/"
+"Issue Tracker" = "https://github.com/apisani1/chat-factory/issues"
+
+[tool.poetry]
+name = "chat-factory"
+version = "0.0.0"
+description = "A short description of the project"
+authors = ["Antonio Pisani <antonio.pisani@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "chat_factory", from = "src" }]
+
+[tool.semantic_release]
+version_variable = [
+    "pyproject.toml:version",
+    "docs/conf.py:release",
+    "src/chat_factory/__init__.py:__version__",
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+
+
+[tool.poetry.group.test]
+optional = true
+
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^6.1.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.poetry.group.lint]
+optional = true
+
+[tool.poetry.group.lint.dependencies]
+flake8 = "^7.1.0"
+flake8-pyproject = "^1.2.0"
+pylint = "^3.3.0"
+black = "^25.1.0"
+isort = "^6.0.0"
+
+[tool.poetry.group.typing]
+optional = true
+
+[tool.poetry.group.typing.dependencies]
+mypy = "^1.16,<1.19"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "^8.1.3"
+sphinx-rtd-theme = "^3.0.2"
+myst-parser = "^4.0.0"
+sphinx-copybutton = "^0.5.2"
+sphinx-autobuild = "^2021.3.14"
+sphinx-sitemap = "^2.6.0"
+sphinx-tabs = "^3.4.7"
+roman = "^4.2"                  # Required for Sphinx latex builder with Python 3.13+
+doc8 = ">=0.8.0"
+
+[tool.black]
+line-length = 119
+
+[tool.flake8]
+extend-ignore = [
+    "W503",
+    # E501: Line too long
+    "E501",
+    # D100: Missing docstring in public module
+    "D100",
+    # D101: Missing docstring in public class
+    "D101",
+    # D102: Missing docstring in public method
+    "D102",
+    # D103: Missing docstring in public function
+    "D103",
+    # D104: Missing docstring in public package
+    "D104",
+    # W605: Invalid escape sequence
+    "W605",
+    # E203: Whitespace before ':'
+    "E203",
+]
+exclude = ["docs", "tests", ".venv", ".git", "__pycache__", "build", "dist"]
+radon-max-cc = 15
+
+[tool.mypy]
+exclude = '^(tests\/test.*\.py|docs\/.*\.py)$'
+python_version = "3.10"
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true
+show_error_codes = true
+warn_unused_ignores = false
+
+[tool.pylint.MESSAGES_CONTROL]
+disable = [
+    "raw-checker-failed",
+    "bad-inline-option",
+    "locally-disabled",
+    "file-ignored",
+    "suppressed-message",
+    "useless-suppression",
+    "deprecated-pragma",
+    "use-symbolic-message-instead",
+    "use-implicit-booleaness-not-comparison-to-string",
+    "use-implicit-booleaness-not-comparison-to-zero",
+    "missing-module-docstring",
+    "missing-function-docstring",
+    "missing-class-docstring",
+    "no-self-argument",
+    "broad-exception-caught",
+    "anomalous-backslash-in-string",
+    "logging-fstring-interpolation",
+    "raise-missing-from",
+    "redefined-builtin",
+    "invalid-overridden-method",
+    "unspecified-encoding",
+    "import-outside-toplevel",
+    "global-statement",
+    "global-variable-not-assigned",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-statements",
+    "too-many-branches",
+    "too-many-return-statements",
+    "too-many-instance-attributes",
+    "unnecessary-dunder-call",
+    "duplicate-code",
+    "line-too-long",
+]
+
+[tool.pylint.MASTER]
+ignore = ["tests", "docs", ".venv", ".git", "__pycache__", "build", "dist"]
+
+[tool.isort]
+profile = "black"
+known_third_party = [
+    "numpy",
+    "pandas",
+    "keras",
+    "tensorflow",
+    "sklearn",
+    "matplotlib",
+    "scipy",
+    "h5py",
+    "seaborn",
+    "numba",
+    "gym",
+    "PyQt6",
+    "PyQt5",
+    "pyqtgraph",
+    "fastapi",
+    "pytest",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "aiohttp",
+    "databases",
+    "aioredis",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "snappy",
+    "asyncpg",
+    "pytest_asyncio",
+]
+force_single_line = false
+multi_line_output = 3
+force_grid_wrap = 2
+use_parentheses = true
+include_trailing_comma = true
+lines_after_imports = 2
+ensure_newline_before_comments = true
+line_length = 119
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "FIRSTPARTY"
+extend_skip = ["tests", "docs", ".venv", ".git", "__pycache__", "build", "dist"]
+
+[tool.doc8]
+max-line-length = 120
+ignore = ["D004", "D002"]
+ignore-path = ["docs/_build"]

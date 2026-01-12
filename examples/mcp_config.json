@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+    "todo_server": {
+      "command": "/Users/antonio/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/",
+        "python3",
+        "-m",
+        "todo_server"
+      ]
+    }
+  }
+}
