@@ -95,6 +95,9 @@ class AsyncChatFactory:
         self.mcp_config_path = mcp_config_path
         self._stack: Optional[AsyncExitStack] = None
 
+        # Register shutdown handler
+        atexit.register(lambda: print("Shutting down AsyncChatFactory..."))
+
     async def __aenter__(self) -> "AsyncChatFactory":
         """Enter the async context manager."""
         if self.mcp_config_path:
@@ -135,13 +138,11 @@ class AsyncChatFactory:
             self._stack = None
             print("MCP client closed successfully")
 
-    async def connect_to_mcp(self) -> "AsyncChatFactory":
-        """Connect to MCP servers and register for shutdown message on exit."""
-        instance = await self.__aenter__()
-        atexit.register(lambda: print("Shutting down AsyncChatFactory..."))
-        return instance
+    async def connect_to_mcp_servers(self) -> "AsyncChatFactory":
+        """Connect to MCP servers."""
+        return await self.__aenter__()
 
-    async def disconnect_from_mcp(self) -> None:
+    async def disconnect_from_mcp_servers(self) -> None:
         """Disconnect from MCP servers."""
         await self.__aexit__(None, None, None)
 

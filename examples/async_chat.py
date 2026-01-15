@@ -1,15 +1,12 @@
-from typing import (
-    Any,
-    Dict,
-    List
-)
+from typing import Any, Dict, List, Optional
 
 import gradio as gr
+from pypdf import PdfReader
+
 from chat_factory import (
     AsyncChatFactory,
     ChatModel,
 )
-from pypdf import PdfReader
 from tools import tools
 
 
@@ -42,7 +39,9 @@ The Agent has been provided with context on {name} in the form of their summary 
 ## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n"
 With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
+chat_factory: Optional[AsyncChatFactory] = None
 chat_fn = None
+demo: Optional[gr.Blocks] = None
 
 openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
 anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
@@ -53,7 +52,7 @@ anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic"
 
 
 async def init_chat_factory() -> None:
-    global chat_fn
+    global chat_factory, chat_fn
 
     chat_factory = AsyncChatFactory(
         generator_model=openai_model,
@@ -63,8 +62,18 @@ async def init_chat_factory() -> None:
         tools=tools,
         mcp_config_path="mcp_config.json",
     )
-    await chat_factory.connect_to_mcp()
+    await chat_factory.connect_to_mcp_servers()
     chat_fn = chat_factory.get_async_gradio_chat()
+
+
+async def shutdown() -> str:
+    """Clean shutdown: disconnect MCP and close demo."""
+
+    # Do here any necessary cleanup
+
+    if demo:
+        demo.close()
+    return "Server shutting down..."
 
 
 async def chat(message: str, history: List[Dict[str, Any]]) -> str:
@@ -74,10 +83,20 @@ async def chat(message: str, history: List[Dict[str, Any]]) -> str:
 
 
 def main() -> None:
+    global demo
+
+    # Do here any necessary setup
+
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)
 
-        # This runs once when Gradio server starts
+        with gr.Row():
+            exit_btn = gr.Button("Exit", variant="stop", scale=0)
+
+        exit_btn.click(fn=shutdown, outputs=gr.Textbox(visible=False))
+
+        # This runs once when Gradio server starts and
+        # avoids creating an asyncio loop inside an existing one
         demo.load(init_chat_factory)
 
     demo.launch()
