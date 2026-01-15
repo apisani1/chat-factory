@@ -1,3 +1,5 @@
+import os
+
 import gradio as gr
 
 from chat_factory import (
@@ -16,6 +18,15 @@ Do not ask the user questions or clarification; respond only with the answer aft
 """
 
 
+def shutdown() -> str:
+    """Force exit the application."""
+
+    # Do here any necessary cleanup before shutdown
+
+    os._exit(0)
+    return ""  # Never reached
+
+
 def main() -> None:
     openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
     # anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
@@ -23,6 +34,8 @@ def main() -> None:
     # deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
     # groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
     # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
+
+    # Do here any necessary setup before starting Gradio interface
 
     # Create ChatFactory instance
     chat = ChatFactory(
@@ -33,8 +46,15 @@ def main() -> None:
         mcp_config_path="mcp_config.json",
     ).get_gradio_chat()
 
-    # Pass the chat method to Gradio
-    gr.ChatInterface(fn=chat).launch()
+    with gr.Blocks() as demo:
+        gr.ChatInterface(fn=chat)
+
+        with gr.Row():
+            exit_btn = gr.Button("Exit", variant="stop", scale=0)
+
+        exit_btn.click(fn=shutdown, outputs=gr.Textbox(visible=False))
+
+    demo.launch()
 
 
 if __name__ == "__main__":

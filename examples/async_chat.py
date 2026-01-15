@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 
 import gradio as gr
@@ -67,13 +68,12 @@ async def init_chat_factory() -> None:
 
 
 async def shutdown() -> str:
-    """Clean shutdown: disconnect MCP and close demo."""
+    """Force exit the application."""
 
-    # Do here any necessary cleanup
+    # Do here any necessary cleanup before shutdown
 
-    if demo:
-        demo.close()
-    return "Server shutting down..."
+    os._exit(0)
+    return ""  # Never reached
 
 
 async def chat(message: str, history: List[Dict[str, Any]]) -> str:
@@ -85,7 +85,7 @@ async def chat(message: str, history: List[Dict[str, Any]]) -> str:
 def main() -> None:
     global demo
 
-    # Do here any necessary setup
+    # Do here any necessary setup before starting Gradio interface
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)
