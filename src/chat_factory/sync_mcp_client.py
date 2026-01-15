@@ -91,8 +91,6 @@ class SyncMultiServerClient:
 
         # Register automatic cleanup on program exit
         # This ensures MCP client is properly shutdown when the program terminates,
-        # which is especially important for long-running applications (like chat bots)
-        # where the client needs to stay alive until Ctrl+C or normal exit
         atexit.register(self.shutdown)
 
     def _start_background_loop(self) -> None:

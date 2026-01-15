@@ -192,9 +192,11 @@ class ChatFactory:
                 messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
                     {"role": "user", "content": evaluator_user_prompt(user_message, agent_reply, extended_history)}
                 ]
-                return self.evaluator_model.generate_response(  # type: ignore
+                evaluation = self.evaluator_model.generate_response(  # type: ignore
                     messages=messages, response_format=Evaluation, **self.evaluator_kwargs
                 )
+                assert isinstance(evaluation, Evaluation)
+                return evaluation
             except Exception as e:
                 print(f"Error during evaluation: {e}")
                 return Evaluation(is_acceptable=True, feedback="")

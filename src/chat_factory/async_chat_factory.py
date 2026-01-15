@@ -1,3 +1,4 @@
+import atexit
 import json
 from contextlib import AsyncExitStack
 from typing import (
@@ -129,13 +130,19 @@ class AsyncChatFactory:
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit the async context manager."""
         if self._stack:
+            print("Disconnecting from MCP servers...")
             await self._stack.__aexit__(exc_type, exc_val, exc_tb)
             self._stack = None
+            print("MCP client closed successfully")
 
     async def connect_to_mcp(self) -> "AsyncChatFactory":
-        return await self.__aenter__()
+        """Connect to MCP servers and register for shutdown message on exit."""
+        instance = await self.__aenter__()
+        atexit.register(lambda: print("Shutting down AsyncChatFactory..."))
+        return instance
 
     async def disconnect_from_mcp(self) -> None:
+        """Disconnect from MCP servers."""
         await self.__aexit__(None, None, None)
 
     @staticmethod
@@ -214,14 +221,16 @@ class AsyncChatFactory:
             user_prompt += "Please evaluate the response, replying with whether it is acceptable and your feedback."
             return user_prompt
 
-        def evaluate(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
+        async def evaluate(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
             try:
                 messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
                     {"role": "user", "content": evaluator_user_prompt(user_message, agent_reply, extended_history)}
                 ]
-                return self.evaluator_model.generate_response(  # type: ignore
+                evaluation = self.evaluator_model.generate_response(  # type: ignore
                     messages=messages, response_format=Evaluation, **self.evaluator_kwargs
                 )
+                assert isinstance(evaluation, Evaluation)
+                return evaluation
             except Exception as e:
                 print(f"Error during evaluation: {e}")
                 return Evaluation(is_acceptable=True, feedback="")
@@ -306,7 +315,7 @@ class AsyncChatFactory:
             responses = 1
             while responses < self.response_limit:
 
-                evaluation = evaluate(message, reply, extended_history)  # type: ignore
+                evaluation = await evaluate(message, reply, extended_history)  # type: ignore
 
                 if evaluation.is_acceptable:
                     print("Passed evaluation - returning reply")

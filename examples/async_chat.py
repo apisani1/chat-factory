@@ -1,11 +1,15 @@
-import gradio as gr
-from pypdf import PdfReader
-
-from chat_factory import (
-    ChatFactory,
-    ChatModel,
+from typing import (
+    Any,
+    Dict,
+    List
 )
 
+import gradio as gr
+from chat_factory import (
+    AsyncChatFactory,
+    ChatModel,
+)
+from pypdf import PdfReader
 from tools import tools
 
 
@@ -38,25 +42,45 @@ The Agent has been provided with context on {name} in the form of their summary 
 ## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n"
 With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
+chat_fn = None
 
-def main() -> None:
-    openai_model = ChatModel(model_name="gpt-5-mini", provider="openai")
-    anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
-    # google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
-    # deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
-    # groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
-    # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
+openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
+anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
+# google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
+# deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
+# groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
+# ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
-    chat = ChatFactory(
+
+async def init_chat_factory() -> None:
+    global chat_fn
+
+    chat_factory = AsyncChatFactory(
         generator_model=openai_model,
         system_prompt=ED_GENERATOR_PROMPT,
         evaluator_model=anthropic_model,
         evaluator_system_prompt=ED_EVALUATOR_PROMPT,
         tools=tools,
         mcp_config_path="mcp_config.json",
-    ).get_gradio_chat()
+    )
+    await chat_factory.connect_to_mcp()
+    chat_fn = chat_factory.get_async_gradio_chat()
 
-    gr.ChatInterface(fn=chat).launch()
+
+async def chat(message: str, history: List[Dict[str, Any]]) -> str:
+    # Wait until init_chat_factory has run
+    # (Gradio guarantees demo.load runs before first call)
+    return await chat_fn(message, history)  # type: ignore
+
+
+def main() -> None:
+    with gr.Blocks() as demo:
+        gr.ChatInterface(fn=chat)
+
+        # This runs once when Gradio server starts
+        demo.load(init_chat_factory)
+
+    demo.launch()
 
 
 if __name__ == "__main__":
