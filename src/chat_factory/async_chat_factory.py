@@ -228,7 +228,7 @@ class AsyncChatFactory:
                 messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
                     {"role": "user", "content": evaluator_user_prompt(user_message, agent_reply, extended_history)}
                 ]
-                evaluation = self.evaluator_model.generate_response(  # type: ignore
+                evaluation = await self.evaluator_model.agenerate_response(  # type: ignore
                     messages=messages, response_format=Evaluation, **self.evaluator_kwargs
                 )
                 assert isinstance(evaluation, Evaluation)
@@ -272,7 +272,7 @@ class AsyncChatFactory:
             """Generate reply with tool calling support."""
             messages = extended_history.copy()
             try:
-                reply = self.generator_model.generate_response(
+                reply = await self.generator_model.agenerate_response(
                     messages=messages,
                     tools=self.openai_tools,
                     **self.generator_kwargs,
@@ -280,7 +280,7 @@ class AsyncChatFactory:
                 while isinstance(reply, list):
                     messages.append({"role": "assistant", "content": None, "tool_calls": reply})
                     messages += await handle_tool_call(reply)
-                    reply = self.generator_model.generate_response(
+                    reply = await self.generator_model.agenerate_response(
                         messages=messages,
                         tools=self.openai_tools,
                         **self.generator_kwargs,
@@ -384,7 +384,7 @@ class AsyncChatFactory:
         # Phase 1: Handle tool calls (non-streaming)
         if self.openai_tools:
             try:
-                reply = self.generator_model.generate_response(
+                reply = await self.generator_model.agenerate_response(
                     messages=messages,
                     tools=self.openai_tools,
                     **self.generator_kwargs,
@@ -394,7 +394,7 @@ class AsyncChatFactory:
                 while isinstance(reply, list):
                     messages.append({"role": "assistant", "content": None, "tool_calls": reply})
                     messages += await handle_tool_call(reply)
-                    reply = self.generator_model.generate_response(
+                    reply = await self.generator_model.agenerate_response(
                         messages=messages,
                         tools=self.openai_tools,
                         **self.generator_kwargs,
