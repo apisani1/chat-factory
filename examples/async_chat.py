@@ -1,13 +1,17 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+)
 
 import gradio as gr
-from pypdf import PdfReader
-
 from chat_factory import (
     AsyncChatFactory,
     ChatModel,
 )
+from pypdf import PdfReader
 from tools import tools
 
 

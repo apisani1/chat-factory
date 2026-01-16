@@ -2,7 +2,9 @@ import json
 import os
 from typing import (
     Any,
+    AsyncIterator,
     Dict,
+    Iterator,
     List,
     Optional,
     Tuple,
@@ -328,6 +330,113 @@ class ChatModel:
             return response.content[0].text  # type: ignore
 
         raise ValueError(f"Unsupported client type: {type(self.client).__name__}")
+
+    def stream_response(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        max_tokens: int = 10000,
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        """
+        Stream text chunks from the LLM.
+
+        Yields text chunks as they arrive from the provider. Does not support
+        tool calling or structured output - use generate_response() for those.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys.
+            max_tokens: Maximum tokens in the response (default: 10000).
+                       Only used for Anthropic; OpenAI uses default from API.
+            **kwargs: Additional provider-specific parameters passed to the API.
+
+        Yields:
+            str: Text chunks as they arrive from the LLM.
+
+        Examples:
+            >>> model = ChatModel("gpt-4o-mini")
+            >>> for chunk in model.stream_response([{"role": "user", "content": "Hello!"}]):
+            ...     print(chunk, end="", flush=True)
+        """
+        if isinstance(self.client, OpenAI):
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,  # type: ignore
+                stream=True,
+                **kwargs,
+            )
+            for chunk in response:
+                if chunk.choices[0].delta.content:  # type: ignore[union-attr]
+                    yield chunk.choices[0].delta.content  # type: ignore[union-attr]
+
+        elif isinstance(self.client, Anthropic):
+            system_content, anthropic_messages = self._prepare_messages_for_anthropic(messages)
+
+            with self.client.messages.stream(
+                model=self.model_name,
+                messages=anthropic_messages,  # type: ignore
+                max_tokens=max_tokens,
+                system=system_content,
+                **kwargs,
+            ) as stream:
+                yield from stream.text_stream
+
+        else:
+            raise ValueError(f"Unsupported client type: {type(self.client).__name__}")
+
+    async def astream_response(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        max_tokens: int = 10000,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """
+        Async stream text chunks from the LLM.
+
+        Yields text chunks as they arrive from the provider. Does not support
+        tool calling or structured output - use generate_response() for those.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys.
+            max_tokens: Maximum tokens in the response (default: 10000).
+                       Only used for Anthropic; OpenAI uses default from API.
+            **kwargs: Additional provider-specific parameters passed to the API.
+
+        Yields:
+            str: Text chunks as they arrive from the LLM.
+
+        Examples:
+            >>> model = ChatModel("gpt-4o-mini")
+            >>> async for chunk in model.astream_response([{"role": "user", "content": "Hello!"}]):
+            ...     print(chunk, end="", flush=True)
+        """
+        if isinstance(self.client, OpenAI):
+            response = await self.client.chat.completions.create(  # type: ignore
+                model=self.model_name,
+                messages=messages,  # type: ignore
+                stream=True,
+                **kwargs,
+            )
+            async for chunk in response:  # type: ignore
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        elif isinstance(self.client, Anthropic):
+            system_content, anthropic_messages = self._prepare_messages_for_anthropic(messages)
+
+            async with self.client.messages.stream(  # type: ignore
+                model=self.model_name,
+                messages=anthropic_messages,  # type: ignore
+                max_tokens=max_tokens,
+                system=system_content,
+                **kwargs,
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
+
+        else:
+            raise ValueError(f"Unsupported client type: {type(self.client).__name__}")
 
     def format_tool_result(self, tool_call_id: str, result: Union[Dict[str, Any], str]) -> Dict[str, Any]:
         """

@@ -3,6 +3,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generator,
     List,
     Optional,
     Tuple,
@@ -296,3 +297,98 @@ class ChatFactory:
 
     def get_gradio_chat(self) -> Callable[[str, List[Dict[str, Any]]], str]:
         return self.chat
+
+    def stream_chat(self, message: str, history: List[Dict[str, Any]]) -> Generator[str, None, None]:
+        """
+        Stream chat response with tool calling support (hybrid mode).
+
+        Handles tool calls non-streaming first, then streams the final text response.
+        Note: Evaluator is not supported in streaming mode.
+
+        Args:
+            message: User message to respond to
+            history: Conversation history
+
+        Yields:
+            str: Accumulated response text (Gradio expects accumulated, not deltas)
+        """
+
+        def sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            """Remove extra fields from messages that may be added by Gradio or other UIs."""
+            return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+
+        def handle_tool_call(tool_calls: List[Any]) -> List[Dict[str, Any]]:
+            """Handle tool calls - uses self.tool_map and self.mcp_client."""
+            results = []
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
+                print(f"Tool called: {tool_name}", flush=True)
+
+                tool = self.tool_map.get(tool_name)
+                if tool:
+                    result = tool(**arguments)
+                elif self.mcp_client:
+                    mcp_tool_result = self.mcp_client.call_tool(tool_name, arguments)
+                    result = process_tool_result_content(mcp_tool_result)
+                else:
+                    result = {}
+
+                results.append(self.generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
+            return results
+
+        # Build messages
+        messages = (
+            [{"role": "system", "content": self.system_prompt}]
+            + sanitize_messages(history)
+            + [{"role": "user", "content": message}]
+        )
+
+        # Phase 1: Handle tool calls (non-streaming)
+        if self.openai_tools:
+            try:
+                reply = self.generator_model.generate_response(
+                    messages=messages,
+                    tools=self.openai_tools,
+                    **self.generator_kwargs,
+                )
+
+                # Tool calling loop
+                while isinstance(reply, list):
+                    messages.append({"role": "assistant", "content": None, "tool_calls": reply})
+                    messages += handle_tool_call(reply)
+                    reply = self.generator_model.generate_response(
+                        messages=messages,
+                        tools=self.openai_tools,
+                        **self.generator_kwargs,
+                    )
+
+                # If we got a string from tool loop, simulate streaming
+                if isinstance(reply, str):
+                    accumulated = ""
+                    for char in reply:
+                        accumulated += char
+                        yield accumulated
+                    return
+
+            except Exception as e:
+                print(f"Error during tool handling: {e}")
+                yield f"Sorry, I encountered an error: {e}"
+                return
+
+        # Phase 2: Stream final response (no tools or tools already handled)
+        try:
+            accumulated = ""
+            for chunk in self.generator_model.stream_response(
+                messages=messages,
+                **self.generator_kwargs,
+            ):
+                accumulated += chunk
+                yield accumulated
+        except Exception as e:
+            print(f"Error during streaming: {e}")
+            yield f"Sorry, I encountered an error: {e}"
+
+    def get_gradio_stream_chat(self) -> Callable[[str, List[Dict[str, Any]]], Generator[str, None, None]]:
+        """Return streaming chat function for Gradio."""
+        return self.stream_chat

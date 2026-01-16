@@ -1,13 +1,11 @@
 import os
 
 import gradio as gr
-from pypdf import PdfReader
-
 from chat_factory import (
     ChatFactory,
     ChatModel,
 )
-
+from pypdf import PdfReader
 from tools import tools
 
 
