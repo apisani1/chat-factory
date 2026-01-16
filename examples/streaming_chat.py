@@ -6,7 +6,7 @@ from chat_factory import (
     ChatFactory,
     ChatModel,
 )
-from tools import tools
+from utils.tools import tools
 
 
 system_message = """You are a helpful AI assistant.
@@ -40,7 +40,7 @@ def main() -> None:
         generator_model=openai_model,
         system_prompt=system_message,
         tools=tools,
-        mcp_config_path="mcp_config.json",
+        mcp_config_path="utils/mcp_config.json",
     ).get_gradio_stream_chat()
 
     with gr.Blocks() as demo:

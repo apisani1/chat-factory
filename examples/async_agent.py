@@ -10,9 +10,9 @@ import gradio as gr
 
 from chat_factory import (
     AsyncChatFactory,
-    ChatModel,
+    AsyncChatModel,
 )
-from tools import tools
+from utils.tools import tools
 
 
 system_message = """
@@ -27,12 +27,12 @@ chat_factory: Optional[AsyncChatFactory] = None
 chat_fn = None
 demo: Optional[gr.Blocks] = None
 
-openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
-# anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
-# google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
-# deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
-# groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
-# ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
+openai_model = AsyncChatModel(model_name="gpt-5.2", provider="openai")
+# anthropic_model = AsyncChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
+# google_model = AsyncChatModel(model_name="gemini-2.5-flash", provider="google")
+# deepseek_model = AsyncChatModel(model_name="deepseek-chat", provider="deepseek")
+# groq_model = AsyncChatModel(model_name="openai/gpt-oss-120b", provider="groq")
+# ollama_model = AsyncChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
 
 async def init_chat_factory() -> None:
@@ -43,7 +43,7 @@ async def init_chat_factory() -> None:
         system_prompt=system_message,
         tools=tools,
         generator_kwargs={"reasoning_effort": "none"},
-        mcp_config_path="mcp_config.json",
+        mcp_config_path="utils/mcp_config.json",
     )
     await chat_factory.connect_to_mcp_servers()
     chat_fn = chat_factory.get_async_gradio_chat()

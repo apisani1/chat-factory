@@ -20,8 +20,8 @@ from dotenv import (
     load_dotenv,
 )
 
+from .async_models import AsyncChatModel
 from .mcp_utils import process_tool_result_content
-from .models import ChatModel
 from .schema_utils import extract_function_schema
 
 
@@ -55,9 +55,9 @@ class AsyncChatFactory:
 
     def __init__(
         self,
-        generator_model: ChatModel,
+        generator_model: AsyncChatModel,
         system_prompt: str = GENERATOR_PROMPT,
-        evaluator_model: Optional[ChatModel] = None,
+        evaluator_model: Optional[AsyncChatModel] = None,
         evaluator_system_prompt: str = EVALUATOR_PROMPT,
         response_limit: int = 5,
         tools: Optional[List] = None,

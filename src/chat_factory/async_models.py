@@ -1,10 +1,10 @@
-"""Synchronous LLM client supporting multiple providers."""
+"""Asynchronous LLM client supporting multiple providers."""
 
 import os
 from typing import (
     Any,
+    AsyncIterator,
     Dict,
-    Iterator,
     List,
     Optional,
     Union,
@@ -12,8 +12,8 @@ from typing import (
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic
-from openai import OpenAI
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 
 from .model_utils import (
@@ -26,13 +26,13 @@ from .model_utils import (
 )
 
 
-class ChatModel:
-    """Synchronous LLM client supporting multiple providers."""
+class AsyncChatModel:
+    """Asynchronous LLM client supporting multiple providers."""
 
     def __init__(
         self, model_name: str, provider: str = "openai", api_key: Optional[str] = None, **kwargs: Any
     ) -> None:
-        self.client: Union[OpenAI, Anthropic]
+        self.client: Union[AsyncOpenAI, AsyncAnthropic]
         self.model_name = model_name
         self._provider = provider
         if provider in OPENAI_CLIENT_MAP:
@@ -41,9 +41,9 @@ class ChatModel:
                 raise ValueError(
                     f"Missing API key for {provider} and {OPENAI_CLIENT_MAP[provider]['env_var']} not found in the environment either."
                 )
-            self.client = OpenAI(base_url=OPENAI_CLIENT_MAP[provider]["base_url"], api_key=api_key, **kwargs)
+            self.client = AsyncOpenAI(base_url=OPENAI_CLIENT_MAP[provider]["base_url"], api_key=api_key, **kwargs)
         elif provider == "anthropic":
-            self.client = Anthropic(api_key=api_key, **kwargs)
+            self.client = AsyncAnthropic(api_key=api_key, **kwargs)
         else:
             raise ValueError("Unsupported provider")
 
@@ -52,7 +52,7 @@ class ChatModel:
         """Return the provider name."""
         return self._provider
 
-    def generate_response(
+    async def agenerate_response(
         self,
         messages: List[Dict[str, Any]],
         *,
@@ -62,6 +62,8 @@ class ChatModel:
         **kwargs: Any,
     ) -> Union[str, BaseModel, List[ChatCompletionMessageToolCall]]:
         """
+        Async version of generate_response.
+
         Generate a response from the LLM using the configured provider.
 
         Supports text responses, structured responses, and tool calling across multiple
@@ -89,59 +91,6 @@ class ChatModel:
 
         Raises:
             ValueError: If both tools and response_format are provided.
-
-        Examples:
-            Basic text response:
-                >>> model = ChatModel("gpt-4o-mini")
-                >>> response = model.generate_response([
-                ...     {"role": "user", "content": "Hello!"}
-                ... ])
-
-            Structured response:
-                >>> class Answer(BaseModel):
-                ...     text: str
-                ...     confidence: float
-                >>> response = model.generate_response(
-                ...     messages=[{"role": "user", "content": "What is 2+2?"}],
-                ...     response_format=Answer
-                ... )
-
-            Tool calling (caller handles loop):
-                >>> tools = [{
-                ...     "type": "function",
-                ...     "function": {
-                ...         "name": "get_weather",
-                ...         "description": "Get weather for a location",
-                ...         "parameters": {
-                ...             "type": "object",
-                ...             "properties": {
-                ...                 "location": {"type": "string"}
-                ...             },
-                ...             "required": ["location"]
-                ...         }
-                ...     }
-                ... }]
-                >>> messages = [{"role": "user", "content": "What's the weather in SF?"}]
-                >>> response = model.generate_response(messages, tools=tools)
-                >>> # Response is either str or list of tool calls (if tools requested)
-                >>> if isinstance(response, list):  # Tool calls returned
-                ...     for tool_call in response:
-                ...         # Execute tool using tool_call["function"]["name"]
-                ...         # and tool_call["function"]["arguments"]
-                ...         result = execute_tool(tool_call)
-                ...         # Format and add to messages
-                ...         messages.append(model.format_tool_result(
-                ...             tool_call["id"], result
-                ...         ))
-                ...     # Call again with tool results
-                ...     final_response = model.generate_response(messages, tools=tools)
-
-        Note:
-            - OpenAI: Uses native parse API for structured responses
-            - Anthropic: Uses tool calling for structured responses
-            - System messages: Automatically handled per provider requirements
-            - Tool format: Use OpenAI format; automatically converted for Anthropic
-            - Tool results: Use format_tool_result() helper to format tool results
         """
 
         if response_format is not None and tools is not None:
@@ -150,15 +99,15 @@ class ChatModel:
                 "Use 'tools' for function calling or 'response_format' for structured output, not both."
             )
 
-        if isinstance(self.client, OpenAI):
+        if isinstance(self.client, AsyncOpenAI):
             if response_format is not None:
                 # Structured response mode via native parse API
-                response = self.client.beta.chat.completions.parse(
+                response = await self.client.beta.chat.completions.parse(
                     model=self.model_name, messages=messages, response_format=response_format, **kwargs  # type: ignore
                 )
                 return response.choices[0].message.parsed  # type: ignore
 
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model_name, messages=messages, tools=tools, **kwargs  # type: ignore
             )
 
@@ -169,7 +118,7 @@ class ChatModel:
             # Regular text response mode
             return response.choices[0].message.content  # type: ignore
 
-        if isinstance(self.client, Anthropic):
+        if isinstance(self.client, AsyncAnthropic):
             # Anthropic API differences:
             # 1. Uses separate 'system' parameter instead of system messages in the array
             # 2. Uses tool calling (function calling) for structured output instead of a native parse API
@@ -183,7 +132,7 @@ class ChatModel:
                 # Prepare regular tool calling parameters
                 tool_params = convert_tools_to_anthropic(tools)
 
-            response = self.client.messages.create(  # type: ignore
+            response = await self.client.messages.create(
                 model=self.model_name,
                 messages=anthropic_messages,  # type: ignore
                 max_tokens=max_tokens,
@@ -207,15 +156,15 @@ class ChatModel:
 
         raise ValueError(f"Unsupported client type: {type(self.client).__name__}")
 
-    def stream_response(
+    async def astream_response(
         self,
         messages: List[Dict[str, Any]],
         *,
         max_tokens: int = 10000,
         **kwargs: Any,
-    ) -> Iterator[str]:
+    ) -> AsyncIterator[str]:
         """
-        Stream text chunks from the LLM.
+        Async stream text chunks from the LLM.
 
         Yields text chunks as they arrive from the provider. Does not support
         tool calling or structured output - use generate_response() for those.
@@ -230,32 +179,33 @@ class ChatModel:
             str: Text chunks as they arrive from the LLM.
 
         Examples:
-            >>> model = ChatModel("gpt-4o-mini")
-            >>> for chunk in model.stream_response([{"role": "user", "content": "Hello!"}]):
+            >>> model = AsyncChatModel("gpt-4o-mini")
+            >>> async for chunk in model.astream_response([{"role": "user", "content": "Hello!"}]):
             ...     print(chunk, end="", flush=True)
         """
-        if isinstance(self.client, OpenAI):
-            response = self.client.chat.completions.create(
+        if isinstance(self.client, AsyncOpenAI):
+            response = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,  # type: ignore
                 stream=True,
                 **kwargs,
             )
-            for chunk in response:
-                if chunk.choices[0].delta.content:  # type: ignore[union-attr]
-                    yield chunk.choices[0].delta.content  # type: ignore[union-attr]
+            async for chunk in response:  # type: ignore[union-attr]
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
-        elif isinstance(self.client, Anthropic):
+        elif isinstance(self.client, AsyncAnthropic):
             system_content, anthropic_messages = prepare_messages_for_anthropic(messages)
 
-            with self.client.messages.stream(
+            async with self.client.messages.stream(
                 model=self.model_name,
                 messages=anthropic_messages,  # type: ignore
                 max_tokens=max_tokens,
                 system=system_content,
                 **kwargs,
             ) as stream:
-                yield from stream.text_stream
+                async for text in stream.text_stream:
+                    yield text
 
         else:
             raise ValueError(f"Unsupported client type: {type(self.client).__name__}")

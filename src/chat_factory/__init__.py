@@ -1,5 +1,6 @@
 # Export main classes and functions
 from chat_factory.async_chat_factory import AsyncChatFactory
+from chat_factory.async_models import AsyncChatModel
 from chat_factory.chat_factory import (
     ChatFactory,
     Evaluation,
@@ -19,6 +20,7 @@ __all__ = [
     "ChatFactory",
     "AsyncChatFactory",
     "ChatModel",
+    "AsyncChatModel",
     "Evaluation",
     "extract_function_schema",
     "_map_python_type_to_json_schema",

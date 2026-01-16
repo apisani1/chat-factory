@@ -7,7 +7,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from chat_factory import ChatFactory, ChatModel
 # pyright: reportMissingImports=false
-from to_do import ToDo
+from utils.to_do import ToDo
 
 load_dotenv(find_dotenv(), override=True)
 

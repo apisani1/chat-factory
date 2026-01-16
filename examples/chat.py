@@ -6,7 +6,7 @@ from chat_factory import (
     ChatModel,
 )
 from pypdf import PdfReader
-from tools import tools
+from utils.tools import tools
 
 
 reader = PdfReader("me/linkedin.pdf")
@@ -64,7 +64,7 @@ def main() -> None:
         evaluator_model=anthropic_model,
         evaluator_system_prompt=ED_EVALUATOR_PROMPT,
         tools=tools,
-        mcp_config_path="mcp_config.json",
+        mcp_config_path="utils/mcp_config.json",
     ).get_gradio_chat()
 
     with gr.Blocks() as demo:

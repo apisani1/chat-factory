@@ -5,7 +5,7 @@ from pathlib import Path
 
 from chat_factory import extract_function_schema
 # pyright: reportMissingImports=false
-from to_do import ToDo
+from utils.to_do import ToDo
 
 # Add examples directory to path for to_do import
 examples_dir = Path(__file__).parent.parent / "examples"

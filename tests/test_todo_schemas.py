@@ -4,7 +4,7 @@ import json
 
 from chat_factory import extract_function_schema
 # pyright: reportMissingImports=false
-from to_do import ToDo
+from utils.to_do import ToDo
 
 
 def test_todo_schemas():

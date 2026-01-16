@@ -5,7 +5,7 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
         "python3",
         "-m",
         "todo_server"

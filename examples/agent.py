@@ -6,7 +6,7 @@ from chat_factory import (
     ChatFactory,
     ChatModel,
 )
-from tools import tools
+from utils.tools import tools
 
 
 system_message = """
@@ -43,7 +43,7 @@ def main() -> None:
         system_prompt=system_message,
         tools=tools,
         generator_kwargs={"reasoning_effort": "none"},
-        mcp_config_path="mcp_config.json",
+        mcp_config_path="utils/mcp_config.json",
     ).get_gradio_chat()
 
     with gr.Blocks() as demo:

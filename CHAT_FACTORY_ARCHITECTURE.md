@@ -510,7 +510,7 @@ factory = ChatFactory(
     generator_model=generator,
     evaluator_model=evaluator,
     tools=[get_weather],
-    mcp_config_path="mcp_config.json"
+    mcp_config_path="utils/mcp_config.json"
 )
 
 # Chat
