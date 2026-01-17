@@ -13,7 +13,6 @@ from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
-from utils.tools import tools
 
 
 system_message = """You are a helpful AI assistant.
@@ -38,8 +37,6 @@ async def init_chat_factory() -> None:
     chat_factory = AsyncChatFactory(
         generator_model=openai_model,
         system_prompt=system_message,
-        tools=tools,
-        mcp_config_path="utils/mcp_config.json",
     )
     await chat_factory.connect_to_mcp_servers()
     chat_fn = chat_factory.get_async_gradio_stream_chat()

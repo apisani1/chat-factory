@@ -217,10 +217,10 @@ class ChatFactory:
 
     def stream_chat(self, message: str, history: List[Dict[str, Any]]) -> Generator[str, None, None]:
         """
-        Stream chat response with tool calling support (hybrid mode).
+        Stream chat response.
 
-        Handles tool calls non-streaming first, then streams the final text response.
-        Note: Evaluator is not supported in streaming mode.
+        Note: Tool calling and evaluator are not supported in streaming mode.
+        Use chat() method for tool calling support.
 
         Args:
             message: User message to respond to
@@ -235,39 +235,6 @@ class ChatFactory:
             + [{"role": "user", "content": message}]
         )
 
-        # Phase 1: Handle tool calls (non-streaming)
-        if self.openai_tools:
-            try:
-                reply = self.generator_model.generate_response(
-                    messages=messages,
-                    tools=self.openai_tools,
-                    **self.generator_kwargs,
-                )
-
-                # Tool calling loop
-                while isinstance(reply, list):
-                    messages.append({"role": "assistant", "content": None, "tool_calls": reply})
-                    messages += self.handle_tool_call(reply)
-                    reply = self.generator_model.generate_response(
-                        messages=messages,
-                        tools=self.openai_tools,
-                        **self.generator_kwargs,
-                    )
-
-                # If we got a string from tool loop, simulate streaming
-                if isinstance(reply, str):
-                    accumulated = ""
-                    for char in reply:
-                        accumulated += char
-                        yield accumulated
-                    return
-
-            except Exception as e:
-                print(f"Error during tool handling: {e}")
-                yield f"Sorry, I encountered an error: {e}"
-                return
-
-        # Phase 2: Stream final response (no tools or tools already handled)
         try:
             accumulated = ""
             for chunk in self.generator_model.stream_response(

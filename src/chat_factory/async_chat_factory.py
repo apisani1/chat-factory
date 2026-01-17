@@ -208,7 +208,7 @@ class AsyncChatFactory:
         messages = [{"role": "system", "content": updated_system_prompt}] + extended_history[1:]
         return await self.get_reply(messages)
 
-    async def chat(self, message: str, history: List[Dict[str, Any]]) -> str:
+    async def achat(self, message: str, history: List[Dict[str, Any]]) -> str:
         """Process a chat message and return a response.
 
         Handles the complete chat flow including tool calling and optional
@@ -249,14 +249,14 @@ class AsyncChatFactory:
         return reply  # type: ignore
 
     def get_async_gradio_chat(self) -> Callable[[str, List[Dict[str, Any]]], Coroutine[Any, Any, str]]:
-        return self.chat
+        return self.achat
 
     async def astream_chat(self, message: str, history: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         """
-        Async stream chat response with tool calling support (hybrid mode).
+        Async stream chat response.
 
-        Handles tool calls non-streaming first, then streams the final text response.
-        Note: Evaluator is not supported in streaming mode.
+        Note: Tool calling and evaluator are not supported in streaming mode.
+        Use achat() method for tool calling support.
 
         Args:
             message: User message to respond to
@@ -271,39 +271,6 @@ class AsyncChatFactory:
             + [{"role": "user", "content": message}]
         )
 
-        # Phase 1: Handle tool calls (non-streaming)
-        if self.openai_tools:
-            try:
-                reply = await self.generator_model.agenerate_response(
-                    messages=messages,
-                    tools=self.openai_tools,
-                    **self.generator_kwargs,
-                )
-
-                # Tool calling loop
-                while isinstance(reply, list):
-                    messages.append({"role": "assistant", "content": None, "tool_calls": reply})
-                    messages += await self.handle_tool_call(reply)
-                    reply = await self.generator_model.agenerate_response(
-                        messages=messages,
-                        tools=self.openai_tools,
-                        **self.generator_kwargs,
-                    )
-
-                # If we got a string from tool loop, simulate streaming
-                if isinstance(reply, str):
-                    accumulated = ""
-                    for char in reply:
-                        accumulated += char
-                        yield accumulated
-                    return
-
-            except Exception as e:
-                print(f"Error during tool handling: {e}")
-                yield f"Sorry, I encountered an error: {e}"
-                return
-
-        # Phase 2: Stream final response (no tools or tools already handled)
         try:
             accumulated = ""
             async for chunk in self.generator_model.astream_response(
