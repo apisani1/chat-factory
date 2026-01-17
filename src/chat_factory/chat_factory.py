@@ -18,33 +18,19 @@ from dotenv import (
 )
 
 from .models import ChatModel
+from .utils.factory_utils import (
+    EVALUATOR_PROMPT,
+    GENERATOR_PROMPT,
+    Evaluation,
+    build_evaluator_user_prompt,
+    build_rerun_system_prompt,
+    convert_tools_to_openai_format,
+    sanitize_messages,
+)
 from .utils.mcp_utils import process_tool_result_content
-from .utils.schema_utils import extract_function_schema
 
 
 load_dotenv(find_dotenv(), override=True)
-
-
-class Evaluation(BaseModel):
-    is_acceptable: bool
-    feedback: str
-
-
-GENERATOR_PROMPT = """You are a helpful AI assistant.
-Your responsibility is to provide accurate, professional, and engaging responses to user questions.
-Be clear and concise in your answers.
-If you don't know the answer to something, say so honestly rather than making up information."""
-
-EVALUATOR_PROMPT = """You are an evaluator that decides whether a response to a question is acceptable quality.
-You are provided with a conversation between a User and an Agent.
-Your task is to decide whether the Agent's latest response is acceptable.
-The Agent should be helpful, accurate, professional, and appropriate.
-Consider whether the response:
-- Accurately addresses the user's question
-- Is professional and well-written
-- Is complete and helpful
-- Avoids making up information or being misleading
-Please evaluate the latest response and provide feedback."""
 
 
 class ChatFactory:
@@ -86,7 +72,7 @@ class ChatFactory:
         self.evaluator_kwargs = evaluator_kwargs or {}
 
         # Convert custom tools to OpenAI format
-        self.openai_tools, self.tool_map = self._convert_tools_to_openai(tools)
+        self.openai_tools, self.tool_map = convert_tools_to_openai_format(tools)
 
         # Initialize MCP manager if config provided
         self.mcp_client = None
@@ -116,85 +102,11 @@ class ChatFactory:
                 print(f"Error initializing MCP client: {e}")
                 self.mcp_client = None
 
-    @staticmethod
-    def _convert_tools_to_openai(
-        custom_tools: Optional[List[Union[Callable, Dict[str, Any]]]],
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Callable]]:
-        """
-        Convert custom tool format to OpenAI format with auto-schema generation.
-
-        Supports multiple input formats:
-        1. Just function: [func1, func2] - Auto-generates everything from signature and docstring
-        2. Dict with auto-gen: [{"function": func1}] - Auto-generates schema, optional description override
-        3. Dict with manual: [{"function": func1, "parameters": {...}}] - Backward compatible
-
-        Args:
-            custom_tools: List of tools (functions or dicts with function references)
-
-        Returns:
-            tuple: (openai_tools, tool_map)
-                - openai_tools: List of tools in OpenAI format
-                - tool_map: Dict mapping function names to actual functions
-        """
-        if not custom_tools:
-            return [], {}
-
-        openai_tools = []
-        tool_map = {}
-
-        for tool in custom_tools:
-            # Determine format and extract function
-            if callable(tool):
-                # Format 1: Just a function - auto-generate everything
-                func: Callable = tool
-                schema = extract_function_schema(func)
-            elif isinstance(tool, dict):
-                # Format 2 or 3: Dict with function
-                func = tool.get("function")  # type: ignore
-
-                if func is None:
-                    raise ValueError(f"Tool dict must have 'function' key. Got: {list(tool.keys())}")
-
-                if not callable(func):
-                    raise TypeError(f"Tool 'function' must be callable, got {type(func).__name__}")
-
-                if "parameters" in tool:
-                    # Format 3: Manual schema (backward compatible)
-                    schema = {
-                        "name": func.__name__,
-                        "description": tool.get("description", ""),
-                        "parameters": tool["parameters"],
-                    }
-                else:
-                    # Format 2: Auto-generate schema from function
-                    schema = extract_function_schema(func)
-
-                    # Allow description override
-                    if "description" in tool:
-                        schema["description"] = tool["description"]
-            else:
-                raise TypeError(f"Tool must be a callable or dict, got {type(tool).__name__}")
-
-            func_name = func.__name__
-
-            openai_tools.append({"type": "function", "function": schema})
-
-            tool_map[func_name] = func
-
-        return openai_tools, tool_map
-
-    @staticmethod
-    def evaluator_user_prompt(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> str:
-        user_prompt = f"Here's the conversation between the User and the Agent: \n\n{extended_history}\n\n"
-        user_prompt += f"Here's the latest message from the User: \n\n{user_message}\n\n"
-        user_prompt += f"Here's the latest response from the Agent: \n\n{agent_reply}\n\n"
-        user_prompt += "Please evaluate the response, replying with whether it is acceptable and your feedback."
-        return user_prompt
-
     def evaluate(self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
+        """Evaluate the agent's response using the evaluator model."""
         try:
             messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
-                {"role": "user", "content": self.evaluator_user_prompt(user_message, agent_reply, extended_history)}
+                {"role": "user", "content": build_evaluator_user_prompt(user_message, agent_reply, extended_history)}
             ]
             evaluation = self.evaluator_model.generate_response(  # type: ignore
                 messages=messages, response_format=Evaluation, **self.evaluator_kwargs
@@ -204,11 +116,6 @@ class ChatFactory:
         except Exception as e:
             print(f"Error during evaluation: {e}")
             return Evaluation(is_acceptable=True, feedback="")
-
-    @staticmethod
-    def sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Remove extra fields from messages that may be added by Gradio or other UIs."""
-        return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
     def handle_tool_call(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
         """Handle tool calls - uses self.tool_map and self.mcp_client."""
@@ -261,21 +168,14 @@ class ChatFactory:
         self, reply: str, feedback: str, extended_history: List[Dict[str, Any]]
     ) -> Tuple[Union[str, BaseModel], List[Dict[str, Any]]]:
         """Regenerate reply based on evaluator feedback."""
-        updated_system_prompt = (
-            self.system_prompt
-            + "\n\n## Previous answer rejected\nYou just tried to reply, but the quality control rejected your reply\n"
-        )
-        updated_system_prompt += f"## Your attempted answer:\n{reply}\n\n"
-        updated_system_prompt += f"## Reason for rejection:\n{feedback}\n\n"
-        messages = [{"role": "system", "content": updated_system_prompt}] + extended_history[
-            1:
-        ]  # exclude previous system prompt
+        updated_system_prompt = build_rerun_system_prompt(self.system_prompt, reply, feedback)
+        messages = [{"role": "system", "content": updated_system_prompt}] + extended_history[1:]
         return self.get_reply(messages)
 
     def chat(self, message: str, history: List[Dict[str, Any]]) -> str:
         messages = (
             [{"role": "system", "content": self.system_prompt}]
-            + self.sanitize_messages(history)
+            + sanitize_messages(history)
             + [{"role": "user", "content": message}]
         )
         reply, extended_history = self.get_reply(messages)
@@ -318,7 +218,7 @@ class ChatFactory:
         """
         messages = (
             [{"role": "system", "content": self.system_prompt}]
-            + self.sanitize_messages(history)
+            + sanitize_messages(history)
             + [{"role": "user", "content": message}]
         )
 

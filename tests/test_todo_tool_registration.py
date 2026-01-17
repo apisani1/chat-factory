@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from chat_factory import ChatFactory
+from chat_factory.utils.factory_utils import convert_tools_to_openai_format
 # pyright: reportMissingImports=false
 from utils.to_do import ToDo
 
@@ -28,11 +28,11 @@ def test_todo_tool_registration():
     ]
 
     print("=" * 80)
-    print("Testing ToDo Tool Registration with _convert_tools_to_openai")
+    print("Testing ToDo Tool Registration with convert_tools_to_openai_format")
     print("=" * 80)
 
     # Convert to OpenAI format
-    openai_tools, tool_map = ChatFactory._convert_tools_to_openai(tools)
+    openai_tools, tool_map = convert_tools_to_openai_format(tools)
 
     print(f"\n✓ Successfully converted {len(openai_tools)} tools")
     print(f"✓ Tool map contains {len(tool_map)} function references\n")

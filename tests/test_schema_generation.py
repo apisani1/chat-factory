@@ -7,8 +7,8 @@ from chat_factory import (
     extract_function_schema,
     _map_python_type_to_json_schema,
     _parse_google_docstring,
-    ChatFactory,
 )
+from chat_factory.utils.factory_utils import convert_tools_to_openai_format
 
 # Capture warnings
 warnings.simplefilter("always")
@@ -80,7 +80,7 @@ def test_format_1_just_function():
     """Test Format 1: Just passing functions."""
     print("\n=== Testing Format 1: Just Functions ===")
     tools = [sample_tool_func]
-    openai_tools, tool_map = ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+    openai_tools, tool_map = convert_tools_to_openai_format(tools)  # type: ignore
 
     assert len(openai_tools) == 1
     assert openai_tools[0]["type"] == "function"
@@ -97,7 +97,7 @@ def test_format_2_dict_with_autogen():
     """Test Format 2: Dict with auto-generation."""
     print("\n=== Testing Format 2: Dict with Auto-gen ===")
     tools = [{"function": sample_tool_func, "description": "Custom description override"}]
-    openai_tools, tool_map = ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+    openai_tools, tool_map = convert_tools_to_openai_format(tools)  # type: ignore
 
     assert len(openai_tools) == 1
     assert openai_tools[0]["function"]["description"] == "Custom description override"
@@ -124,7 +124,7 @@ def test_format_3_manual_schema():
         },
     }
     tools = [manual_schema]
-    openai_tools, tool_map = ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+    openai_tools, tool_map = convert_tools_to_openai_format(tools)  # type: ignore
 
     assert len(openai_tools) == 1
     assert openai_tools[0]["function"]["description"] == "Manual description"
@@ -161,7 +161,7 @@ def test_mixed_formats():
         manual_tool,  # Format 3
     ]
 
-    openai_tools, tool_map = ChatFactory._convert_tools_to_openai(tools)
+    openai_tools, tool_map = convert_tools_to_openai_format(tools)
 
     assert len(openai_tools) == 3
     assert openai_tools[0]["function"]["name"] == "another_func"  # Format 1

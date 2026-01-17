@@ -1,7 +1,7 @@
 """Test error handling in schema generation."""
 import sys
 
-from chat_factory import ChatFactory
+from chat_factory.utils.factory_utils import convert_tools_to_openai_format
 
 
 def valid_func(x: int):
@@ -19,7 +19,7 @@ def test_error_missing_function_key():
     tools = [{"description": "oops, no function!"}]
 
     try:
-        ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+        convert_tools_to_openai_format(tools)  # type: ignore
         assert False, "Should have raised ValueError"
     except ValueError as e:
         print(f"✅ Caught ValueError: {e}")
@@ -32,7 +32,7 @@ def test_error_function_not_callable():
     tools = [{"function": "not_a_function"}]
 
     try:
-        ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+        convert_tools_to_openai_format(tools)  # type: ignore
         assert False, "Should have raised TypeError"
     except TypeError as e:
         print(f"✅ Caught TypeError: {e}")
@@ -45,7 +45,7 @@ def test_error_tool_not_dict_or_callable():
     tools = [123]  # Integer instead of function/dict
 
     try:
-        ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+        convert_tools_to_openai_format(tools)  # type: ignore
         assert False, "Should have raised TypeError"
     except TypeError as e:
         print(f"✅ Caught TypeError: {e}")
@@ -58,7 +58,7 @@ def test_error_function_none():
     tools = [{"function": None}]
 
     try:
-        ChatFactory._convert_tools_to_openai(tools)  # type: ignore
+        convert_tools_to_openai_format(tools)  # type: ignore
         assert False, "Should have raised ValueError"
     except ValueError as e:
         print(f"✅ Caught ValueError: {e}")
@@ -71,13 +71,13 @@ def test_valid_cases_still_work():
 
     # Format 1: Just function
     tools1 = [valid_func]
-    openai_tools1, tool_map1 = ChatFactory._convert_tools_to_openai(tools1)  # type: ignore
+    openai_tools1, tool_map1 = convert_tools_to_openai_format(tools1)  # type: ignore
     assert len(openai_tools1) == 1
     print("✅ Format 1 (just function) works")
 
     # Format 2: Dict with auto-gen
     tools2 = [{"function": valid_func}]
-    openai_tools2, tool_map2 = ChatFactory._convert_tools_to_openai(tools2)  # type: ignore
+    openai_tools2, tool_map2 = convert_tools_to_openai_format(tools2)  # type: ignore
     assert len(openai_tools2) == 1
     print("✅ Format 2 (dict with auto-gen) works")
 
@@ -87,7 +87,7 @@ def test_valid_cases_still_work():
         "description": "Manual",
         "parameters": {"type": "object", "properties": {}, "required": []}
     }]
-    openai_tools3, tool_map3 = ChatFactory._convert_tools_to_openai(tools3)  # type: ignore
+    openai_tools3, tool_map3 = convert_tools_to_openai_format(tools3)  # type: ignore
     assert len(openai_tools3) == 1
     print("✅ Format 3 (dict with manual schema) works")
 
