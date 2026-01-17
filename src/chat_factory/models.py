@@ -16,7 +16,7 @@ from anthropic import Anthropic
 from openai import OpenAI
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 
-from .model_utils import (
+from .utils.model_utils import (
     OPENAI_CLIENT_MAP,
     convert_tool_calls_to_openai,
     convert_tools_to_anthropic,

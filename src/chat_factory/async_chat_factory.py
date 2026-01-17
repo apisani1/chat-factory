@@ -21,8 +21,8 @@ from dotenv import (
 )
 
 from .async_models import AsyncChatModel
-from .mcp_utils import process_tool_result_content
-from .schema_utils import extract_function_schema
+from .utils.mcp_utils import process_tool_result_content
+from .utils.schema_utils import extract_function_schema
 
 
 load_dotenv(find_dotenv(), override=True)

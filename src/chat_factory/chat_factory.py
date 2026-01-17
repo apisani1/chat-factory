@@ -17,9 +17,9 @@ from dotenv import (
     load_dotenv,
 )
 
-from .mcp_utils import process_tool_result_content
 from .models import ChatModel
-from .schema_utils import extract_function_schema
+from .utils.mcp_utils import process_tool_result_content
+from .utils.schema_utils import extract_function_schema
 
 
 load_dotenv(find_dotenv(), override=True)
@@ -92,12 +92,16 @@ class ChatFactory:
         self.mcp_client = None
         if mcp_config_path:
             try:
-                from mcp_multi_server.utils import mcp_tools_to_openai_format
+                from mcp_multi_server.utils import (
+                    mcp_tools_to_openai_format,
+                    print_capabilities_summary,
+                )
 
                 from .sync_mcp_client import SyncMultiServerClient
 
                 # Create and initialize MCP client
                 self.mcp_client = SyncMultiServerClient(mcp_config_path)
+                print_capabilities_summary(self.mcp_client.mcp_client)  # type: ignore
 
                 # Get raw MCP tools and convert to OpenAI format
                 mcp_tools = self.mcp_client.list_tools()

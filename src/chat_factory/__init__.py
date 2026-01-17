@@ -6,7 +6,7 @@ from chat_factory.chat_factory import (
     Evaluation,
 )
 from chat_factory.models import ChatModel
-from chat_factory.schema_utils import (
+from chat_factory.utils.schema_utils import (
     _map_python_type_to_json_schema,
     _parse_google_docstring,
     extract_function_schema,
