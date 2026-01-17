@@ -6,6 +6,7 @@ from chat_factory import (
     ChatFactory,
     ChatModel,
 )
+from chat_factory.utils.factory_utils import configure_logging
 from utils.tools import tools
 
 
@@ -38,13 +39,16 @@ def main() -> None:
     # Do here any necessary setup before starting Gradio interface
 
     # Create ChatFactory instance
-    chat = ChatFactory(
+    chat_factory = ChatFactory(
         generator_model=openai_model,
         system_prompt=system_message,
         tools=tools,
         generator_kwargs={"reasoning_effort": "none"},
         mcp_config_path="utils/mcp_config.json",
-    ).get_gradio_chat()
+    )
+    # chat_factory.set_logging_level(level="INFO")
+    configure_logging(level="INFO")
+    chat = chat_factory.get_gradio_chat()
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)

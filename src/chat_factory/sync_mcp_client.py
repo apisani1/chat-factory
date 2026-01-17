@@ -8,6 +8,7 @@ using a background thread with persistent event loop.
 
 import asyncio
 import atexit
+import logging
 import threading
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import (
@@ -19,10 +20,18 @@ from typing import (
 
 from mcp.types import (
     CallToolResult,
+    EmptyResult,
     ListToolsResult,
+    LoggingLevel,
     TextContent,
 )
-from mcp_multi_server import MultiServerClient
+from mcp_multi_server import (
+    MultiServerClient,
+    configure_logging,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class SyncMultiServerClient:
@@ -134,7 +143,7 @@ class SyncMultiServerClient:
                 await asyncio.sleep(0.1)
 
         except Exception as e:
-            print(f"Error in MCP client lifecycle: {e}")
+            logger.error("Error in MCP client lifecycle: %s", e)
             self._init_complete.set()  # Unblock __init__ even on error
             raise
 
@@ -144,7 +153,50 @@ class SyncMultiServerClient:
                 try:
                     await self.mcp_client.__aexit__(None, None, None)
                 except Exception as e:
-                    print(f"Error closing MCP client: {e}")
+                    logger.error("Error closing MCP client: %s", e)
+
+    def set_logging_level(self, level: LoggingLevel) -> EmptyResult:
+        """Set the logging level for the multi-server client and the MCP connected servers.
+
+        Args:
+            level: Logging level as a string in lower case (e.g., "debug", "info", "notice", "warning", "error",
+                "critical", "alert", "emergency") as defined in MCP LoggingLevel.
+
+        Note:
+            The following mappings of MCP to Python logging leves are applied:
+            - "notice" -> "WARNING"
+            - "alert" and "emergency" -> "CRITICAL"
+
+        Examples:
+            >>> SyncMultiServerClient.set_logging_level("debug")
+        """
+        if level not in {"debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"}:
+            raise ValueError(
+                f""""
+                Invalid logging level: {level}.
+                See: https://modelcontextprotocol.github.io/python-sdk/api/#mcp.ClientSession.set_logging_level")
+            """
+            )
+        if level == "notice":
+            level = "warning"
+        elif level in ("alert", "emergency"):
+            level = "critical"
+
+        if self.loop is None or self.mcp_client is None:
+            raise RuntimeError("MCP client not initialized")
+
+        # Schedule async call on background event loop
+        future = asyncio.run_coroutine_threadsafe(self._set_logging_level_async(level), self.loop)
+        future.result()  # Wait for completion
+
+        configure_logging(name="sync_mcp_multi_server", level=level.upper())
+        return EmptyResult()
+
+    async def _set_logging_level_async(self, level: LoggingLevel) -> None:
+        """Async implementation of set_logging_level (runs in background loop)."""
+        if self.mcp_client is None:
+            raise ValueError("MCP client not initialized")
+        await self.mcp_client.set_logging_level(level=level)
 
     def list_tools(self) -> ListToolsResult:
         """List available MCP tools in raw MCP format.
@@ -160,7 +212,7 @@ class SyncMultiServerClient:
             # Access list_tools() synchronously - it's not async
             return self.mcp_client.list_tools()
         except Exception as e:
-            print(f"Error listing MCP tools: {e}")
+            logger.error("Error listing MCP tools: %s", e)
             return ListToolsResult(tools=[])
 
     def _create_error_result(self, error_message: str) -> CallToolResult:
@@ -220,7 +272,7 @@ class SyncMultiServerClient:
 
             return await self.mcp_client.call_tool(tool_name, arguments, **kwargs)
         except Exception as e:
-            print(f"Error calling MCP tool '{tool_name}': {e}")
+            logger.error("Error calling MCP tool '%s': %s", tool_name, e)
             return self._create_error_result(f"Error calling MCP tool '{tool_name}': {e}")
 
     def shutdown(self) -> None:
@@ -228,7 +280,7 @@ class SyncMultiServerClient:
 
         Safe to call multiple times. Waits up to 10 seconds for graceful cleanup.
         """
-        print("Shutting down SyncMultiServerClient...")
+        logger.debug("Shutting down SyncMultiServerClient...")
         if self.loop is not None and not self._shutdown:
             self._shutdown = True
 
@@ -243,10 +295,10 @@ class SyncMultiServerClient:
                 # The task will exit the MCP client context properly
                 if self._lifecycle_future is not None:
                     self._lifecycle_future.result(timeout=10)
-                    print("MCP client closed successfully")
+                    logger.debug("MCP client closed successfully")
             except Exception as e:
                 # Errors expected during interpreter shutdown
-                print(f"Error during MCP client shutdown: {e}")
+                logger.warning("Error during MCP client shutdown: %s", e)
 
             try:
                 # Stop event loop

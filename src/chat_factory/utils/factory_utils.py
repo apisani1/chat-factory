@@ -1,5 +1,6 @@
 """Shared utilities for ChatFactory and AsyncChatFactory."""
 
+import logging
 from typing import (
     Any,
     Callable,
@@ -165,3 +166,64 @@ def convert_tools_to_openai_format(
         tool_map[func_name] = func
 
     return openai_tools, tool_map
+
+
+def configure_logging(
+    name: str = "chat_factory",
+    level: str = "INFO",
+    format: Optional[str] = None,
+    datefmt: Optional[str] = None,
+) -> None:
+    """
+    Configure logging for the chat_factory library not for the MCP servers
+    see ChatFactory.set_logging_level().
+
+    This function provides a convenient way to configure logging for the library.
+    It ensures a handler is configured and sets the log level.
+
+    Note:
+        For more control, users can configure logging directly using Python's
+        logging module in their application code.
+
+    Args:
+        level: Log level as a string (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+               Defaults to "INFO".
+        format: Optional custom format string for log messages.
+                If not provided, uses a default format with timestamp and level.
+        datefmt: Optional custom date format string.
+
+    Examples:
+    ::
+
+        Basic usage - set log level to DEBUG:
+        >>> from chat_factory.utils.factory_utils import configure_logging
+        >>> configure_logging(level="DEBUG")
+
+        Custom format:
+        >>> configure_logging(
+        ...     level="INFO",
+        ...     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        ...     datefmt="%Y-%m-%d %H:%M:%S"
+        ... )
+
+        Using standard logging module for more control:
+        >>> import logging
+        >>> logging.getLogger("chat_factory").setLevel(logging.DEBUG)
+        >>> # Or configure entire app:
+        >>> logging.basicConfig(level=logging.DEBUG)
+    """
+    log_level = getattr(logging, level.upper(), logging.INFO)
+
+    # Ensure root logger has a handler configured
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        # No handlers configured yet, set up basic configuration
+        logging.basicConfig(
+            level=log_level,
+            format=format or "%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+            datefmt=datefmt or "%Y-%m-%d %H:%M:%S",
+        )
+
+    # Set the log level
+    library_logger = logging.getLogger(name)
+    library_logger.setLevel(log_level)

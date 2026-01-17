@@ -12,6 +12,7 @@ from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
+from chat_factory.utils.factory_utils import configure_logging
 from utils.tools import tools
 
 
@@ -46,6 +47,7 @@ async def init_chat_factory() -> None:
         mcp_config_path="utils/mcp_config.json",
     )
     await chat_factory.connect_to_mcp_servers()
+    # await chat_factory.set_logging_level(level="INFO")
     chat_fn = chat_factory.get_async_gradio_chat()
 
 
@@ -68,6 +70,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
+    configure_logging(level="INFO")
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)
@@ -82,8 +85,6 @@ def main() -> None:
         demo.load(init_chat_factory)
 
     demo.launch()
-
-    print("******Gradio Async Chat Interface has exited.")
 
 
 if __name__ == "__main__":

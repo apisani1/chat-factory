@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import (
     Any,
     Callable,
@@ -24,11 +25,14 @@ from .utils.factory_utils import (
     Evaluation,
     build_evaluator_user_prompt,
     build_rerun_system_prompt,
+    configure_logging,
     convert_tools_to_openai_format,
     sanitize_messages,
 )
 from .utils.mcp_utils import process_tool_result_content
 
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv(), override=True)
 
@@ -78,16 +82,12 @@ class ChatFactory:
         self.mcp_client = None
         if mcp_config_path:
             try:
-                from mcp_multi_server.utils import (
-                    mcp_tools_to_openai_format,
-                    print_capabilities_summary,
-                )
+                from mcp_multi_server.utils import mcp_tools_to_openai_format
 
                 from .sync_mcp_client import SyncMultiServerClient
 
                 # Create and initialize MCP client
                 self.mcp_client = SyncMultiServerClient(mcp_config_path)
-                print_capabilities_summary(self.mcp_client.mcp_client)  # type: ignore
 
                 # Get raw MCP tools and convert to OpenAI format
                 mcp_tools = self.mcp_client.list_tools()
@@ -95,12 +95,28 @@ class ChatFactory:
                 self.openai_tools.extend(mcp_tools_openai)
 
             except ImportError as e:
-                print(f"MCP Multi-Server package is not installed: {e}")
-                print("Run pip install mcp-multi-server")
+                logger.error("MCP Multi-Server package is not installed: %s. Run: pip install mcp-multi-server", e)
                 self.mcp_client = None
             except Exception as e:
-                print(f"Error initializing MCP client: {e}")
+                logger.error("Error initializing MCP client: %s", e)
                 self.mcp_client = None
+
+    def set_logging_level(self, level: str) -> None:
+        """Set the logging level for the chat and the MCP connected servers.
+
+        Args:
+            level: Logging level as string (e.g., "DEBUG", "INFO", "WARNING", "ERROR")
+        """
+        log_level = level.upper()
+        if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError(f"Invalid logging level: {level}. Choose from DEBUG, INFO, WARNING, ERROR, CRITICAL.")
+        if self.mcp_client:
+            try:
+                self.mcp_client.set_logging_level(level=log_level.lower())  # type: ignore
+                logger.info("MCP logging level set to %s", log_level)
+            except Exception as e:
+                logger.warning("Error setting MCP logging level to %s: %s", log_level, e)
+        configure_logging(name="chat_factory", level=log_level)
 
     def evaluate(self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
         """Evaluate the agent's response using the evaluator model."""
@@ -114,7 +130,7 @@ class ChatFactory:
             assert isinstance(evaluation, Evaluation)
             return evaluation
         except Exception as e:
-            print(f"Error during evaluation: {e}")
+            logger.error("Error during evaluation: %s", e)
             return Evaluation(is_acceptable=True, feedback="")
 
     def handle_tool_call(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
@@ -124,7 +140,7 @@ class ChatFactory:
 
             tool_name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments)
-            print(f"Tool called: {tool_name}", flush=True)
+            logger.info("Tool called: %s", tool_name)
 
             tool = self.tool_map.get(tool_name)
             if tool:
@@ -138,7 +154,7 @@ class ChatFactory:
                 # Unknown tool
                 result = {}
 
-            # print(f"Tool result: {result}", flush=True)
+            logger.debug("Tool result: %s", result)
             results.append(self.generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
         return results
 
@@ -161,7 +177,7 @@ class ChatFactory:
                 )
             return reply, messages
         except Exception as e:
-            print(f"Error generating reply: {e}")
+            logger.error("Error generating reply: %s", e)
             return "Sorry, I encountered an error while generating a response.", messages
 
     def rerun(
@@ -200,15 +216,15 @@ class ChatFactory:
                 evaluation = self.evaluate(message, reply, extended_history)  # type: ignore
 
                 if evaluation.is_acceptable:
-                    print("Passed evaluation - returning reply")
+                    logger.info("Passed evaluation - returning reply")
                     break
 
-                print("Failed evaluation - retrying")
-                print(evaluation.feedback)
+                logger.info("Failed evaluation - retrying")
+                logger.info(evaluation.feedback)
                 reply, extended_history = self.rerun(reply, evaluation.feedback, extended_history)  # type: ignore
                 responses += 1
 
-            print(f"****Final response after {responses} attempt(s).")
+            logger.info("****Final response after %d attempt(s).", responses)
 
         return reply  # type: ignore
 
@@ -244,7 +260,7 @@ class ChatFactory:
                 accumulated += chunk
                 yield accumulated
         except Exception as e:
-            print(f"Error during streaming: {e}")
+            logger.error("Error during streaming: %s", e)
             yield f"Sorry, I encountered an error: {e}"
 
     def get_gradio_stream_chat(self) -> Callable[[str, List[Dict[str, Any]]], Generator[str, None, None]]:
