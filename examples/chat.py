@@ -1,13 +1,14 @@
 import os
 
 import gradio as gr
+from pypdf import PdfReader
+
 from chat_factory import (
     ChatFactory,
     ChatModel,
 )
-from pypdf import PdfReader
+from chat_factory.utils.factory_utils import configure_logging
 from utils.tools import tools
-
 
 reader = PdfReader("me/linkedin.pdf")
 linkedin = ""
@@ -57,15 +58,18 @@ def main() -> None:
     # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
     # Do here any necessary setup before starting Gradio interface
+    configure_logging(level="WARNING")
 
-    chat = ChatFactory(
+    chat_factory = ChatFactory(
         generator_model=openai_model,
         system_prompt=ED_GENERATOR_PROMPT,
         evaluator_model=anthropic_model,
         evaluator_system_prompt=ED_EVALUATOR_PROMPT,
         tools=tools,
         mcp_config_path="utils/mcp_config.json",
-    ).get_gradio_chat()
+    )
+    chat_factory.set_mcp_logging_level(level="CRITICAL")
+    chat = chat_factory.get_gradio_chat()
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)

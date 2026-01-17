@@ -1,12 +1,12 @@
 import logging
 from typing import List
 
+from chat_factory.utils.factory_utils import configure_logging
 from mcp.server.fastmcp import FastMCP
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("MCP Todo Server")
-
 
 todos: List[str] = []
 completed: List[bool] = []
@@ -15,11 +15,18 @@ completed: List[bool] = []
 def show(text: str) -> None:
     try:
         import sys
+
         from rich.console import Console
 
         Console(file=sys.stderr).print(text)
     except Exception:
-        logging.info(text)
+        logger.info(text)
+
+
+@mcp._mcp_server.set_logging_level()
+async def set_logging_level(level: str) -> None:
+    configure_logging(name="todo_server", level=level)
+    logger.info(f"Todo serverlogging level set to {level}")
 
 
 @mcp.tool(name="get_todo_report")
@@ -111,5 +118,5 @@ def clear_todos() -> str:
 
 
 if __name__ == "__main__":
-    logging.info("Starting MCP Todo Server...")
+    logger.info("Starting MCP Todo Server...")
     mcp.run()

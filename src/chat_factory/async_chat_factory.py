@@ -28,7 +28,6 @@ from .utils.factory_utils import (
     Evaluation,
     build_evaluator_user_prompt,
     build_rerun_system_prompt,
-    configure_logging,
     convert_tools_to_openai_format,
     sanitize_messages,
 )
@@ -98,6 +97,9 @@ class AsyncChatFactory:
 
                 # Create and initialize MCP client
                 self.mcp_client = MultiServerClient.from_config(self.mcp_config_path)
+
+                self.mcp_client.mcp_log_level = "CRITICAL"
+
                 self._stack = AsyncExitStack()
                 await self._stack.__aenter__()
                 await self.mcp_client.connect_all(self._stack)
@@ -132,8 +134,8 @@ class AsyncChatFactory:
         """Disconnect from MCP servers."""
         await self.__aexit__(None, None, None)
 
-    async def set_logging_level(self, level: str) -> None:
-        """Set the logging level for the chat and the MCP connected servers.
+    async def set_mcp_logging_level(self, level: str) -> None:
+        """Set the logging level the MCP connected servers.
 
         Args:
             level: Logging level as string (e.g., "DEBUG", "INFO", "WARNING", "ERROR")
@@ -147,7 +149,6 @@ class AsyncChatFactory:
                 logger.info("MCP logging level set to %s", log_level)
             except Exception as e:
                 logger.warning("Error setting MCP logging level to %s: %s", log_level, e)
-        configure_logging(name="async_chat_factory", level=log_level)
 
     async def evaluate(
         self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]

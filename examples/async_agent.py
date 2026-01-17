@@ -7,7 +7,6 @@ from typing import (
 )
 
 import gradio as gr
-
 from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
@@ -47,7 +46,7 @@ async def init_chat_factory() -> None:
         mcp_config_path="utils/mcp_config.json",
     )
     await chat_factory.connect_to_mcp_servers()
-    # await chat_factory.set_logging_level(level="INFO")
+    await chat_factory.set_mcp_logging_level(level="CRITICAL")
     chat_fn = chat_factory.get_async_gradio_chat()
 
 
@@ -70,7 +69,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
-    configure_logging(level="INFO")
+    configure_logging(level="WARNING")
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)

@@ -6,6 +6,7 @@ from chat_factory import (
     ChatFactory,
     ChatModel,
 )
+from chat_factory.utils.factory_utils import configure_logging
 
 
 system_message = """You are a helpful AI assistant.
@@ -33,6 +34,7 @@ def main() -> None:
     # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
     # Do here any necessary setup before starting Gradio interface
+    configure_logging(level="WARNING")
 
     # Create ChatFactory and get streaming chat function
     chat = ChatFactory(

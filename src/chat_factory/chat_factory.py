@@ -25,7 +25,6 @@ from .utils.factory_utils import (
     Evaluation,
     build_evaluator_user_prompt,
     build_rerun_system_prompt,
-    configure_logging,
     convert_tools_to_openai_format,
     sanitize_messages,
 )
@@ -101,8 +100,8 @@ class ChatFactory:
                 logger.error("Error initializing MCP client: %s", e)
                 self.mcp_client = None
 
-    def set_logging_level(self, level: str) -> None:
-        """Set the logging level for the chat and the MCP connected servers.
+    def set_mcp_logging_level(self, level: str) -> None:
+        """Set the logging level for the MCP connected servers.
 
         Args:
             level: Logging level as string (e.g., "DEBUG", "INFO", "WARNING", "ERROR")
@@ -116,7 +115,6 @@ class ChatFactory:
                 logger.info("MCP logging level set to %s", log_level)
             except Exception as e:
                 logger.warning("Error setting MCP logging level to %s: %s", log_level, e)
-        configure_logging(name="chat_factory", level=log_level)
 
     def evaluate(self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
         """Evaluate the agent's response using the evaluator model."""

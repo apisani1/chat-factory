@@ -168,6 +168,43 @@ def convert_tools_to_openai_format(
     return openai_tools, tool_map
 
 
+def suppress_logging_for(library_name: str = "chat_factory") -> None:
+    """
+    Suppress all logging output for a specific library (default: "chat_factory").
+
+    This function sets the logging level to CRITICAL for the specified logger namespace,
+    effectively silencing all log messages from that library.
+
+    Args:
+        library_name: Logger name/namespace to suppress. Defaults to "chat_factory".
+
+    Examples:
+    ::
+
+        Suppress logging for the default "chat_factory" library:
+        >>> from chat_factory.utils.factory_utils import suppress_logging_for
+        >>> suppress_logging_for()
+
+        Suppress logging for a different library:
+        >>> suppress_logging_for(library_name="some_other_library")
+    """
+    library_logger = logging.getLogger(library_name)
+
+    # Remove any handlers MCP installed
+    for handler in list(library_logger.handlers):
+        library_logger.removeHandler(handler)
+    # Now enforce your policy
+    library_logger.setLevel(logging.CRITICAL)
+    library_logger.propagate = False
+
+    for name in list(logging.Logger.manager.loggerDict):
+        if name.startswith(library_name):
+            logger = logging.getLogger(name)
+            logger.handlers.clear()
+            logger.setLevel(logging.CRITICAL)
+            logger.propagate = False
+
+
 def configure_logging(
     name: str = "chat_factory",
     level: str = "INFO",
@@ -175,17 +212,18 @@ def configure_logging(
     datefmt: Optional[str] = None,
 ) -> None:
     """
-    Configure logging for the chat_factory library not for the MCP servers
-    see ChatFactory.set_logging_level().
+    Configure logging for an specific library (default: "chat_factory") ONLY.
 
-    This function provides a convenient way to configure logging for the library.
-    It ensures a handler is configured and sets the log level.
+    This function configures logging for the specified logger namespace without affecting
+    other libraries. For MCP server logging, use
+    ChatFactory.set_logging_level() or AsyncChatFactory.set_logging_level().
 
     Note:
-        For more control, users can configure logging directly using Python's
-        logging module in their application code.
+        This function only affects loggers under the specified name (default: "chat_factory").
+        It does NOT call logging.basicConfig() to avoid affecting other libraries.
 
     Args:
+        name: Logger name/namespace to configure. Defaults to "chat_factory".
         level: Log level as a string (DEBUG, INFO, WARNING, ERROR, CRITICAL).
                Defaults to "INFO".
         format: Optional custom format string for log messages.
@@ -209,21 +247,25 @@ def configure_logging(
         Using standard logging module for more control:
         >>> import logging
         >>> logging.getLogger("chat_factory").setLevel(logging.DEBUG)
-        >>> # Or configure entire app:
-        >>> logging.basicConfig(level=logging.DEBUG)
     """
     log_level = getattr(logging, level.upper(), logging.INFO)
 
-    # Ensure root logger has a handler configured
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        # No handlers configured yet, set up basic configuration
-        logging.basicConfig(
-            level=log_level,
-            format=format or "%(asctime)s %(levelname)-8s %(name)s - %(message)s",
-            datefmt=datefmt or "%Y-%m-%d %H:%M:%S",
-        )
-
-    # Set the log level
+    # Get the library's logger (controls all chat_factory.* child loggers)
     library_logger = logging.getLogger(name)
     library_logger.setLevel(log_level)
+
+    logging.getLogger("mcp").setLevel(logging.CRITICAL)
+
+    # Only add a handler if this logger doesn't have one yet
+    # AND the root logger has no handlers (app hasn't configured logging)
+    if not library_logger.handlers and not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.setLevel(log_level)
+        handler.setFormatter(
+            logging.Formatter(
+                format or "%(asctime)s %(levelname)-8s %(name)s - %(message)s", datefmt=datefmt or "%Y-%m-%d %H:%M:%S"
+            )
+        )
+        library_logger.addHandler(handler)
+        # Don't propagate to root - prevents affecting other loggers
+        library_logger.propagate = False

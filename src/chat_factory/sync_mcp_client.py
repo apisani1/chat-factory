@@ -25,10 +25,7 @@ from mcp.types import (
     LoggingLevel,
     TextContent,
 )
-from mcp_multi_server import (
-    MultiServerClient,
-    configure_logging,
-)
+from mcp_multi_server import MultiServerClient
 
 
 logger = logging.getLogger(__name__)
@@ -188,8 +185,6 @@ class SyncMultiServerClient:
         # Schedule async call on background event loop
         future = asyncio.run_coroutine_threadsafe(self._set_logging_level_async(level), self.loop)
         future.result()  # Wait for completion
-
-        configure_logging(name="sync_mcp_multi_server", level=level.upper())
         return EmptyResult()
 
     async def _set_logging_level_async(self, level: LoggingLevel) -> None:

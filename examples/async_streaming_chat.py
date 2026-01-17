@@ -13,6 +13,7 @@ from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
+from chat_factory.utils.factory_utils import configure_logging
 
 
 system_message = """You are a helpful AI assistant.
@@ -62,6 +63,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
+    configure_logging(level="WARNING")
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)
