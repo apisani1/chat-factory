@@ -214,110 +214,113 @@ class AsyncChatFactory:
 
         return openai_tools, tool_map
 
-    async def chat(self, message: str, history: List[Dict[str, Any]]) -> str:
+    @staticmethod
+    def evaluator_user_prompt(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> str:
+        user_prompt = f"Here's the conversation between the User and the Agent: \n\n{extended_history}\n\n"
+        user_prompt += f"Here's the latest message from the User: \n\n{user_message}\n\n"
+        user_prompt += f"Here's the latest response from the Agent: \n\n{agent_reply}\n\n"
+        user_prompt += "Please evaluate the response, replying with whether it is acceptable and your feedback."
+        return user_prompt
 
-        def evaluator_user_prompt(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> str:
-            user_prompt = f"Here's the conversation between the User and the Agent: \n\n{extended_history}\n\n"
-            user_prompt += f"Here's the latest message from the User: \n\n{user_message}\n\n"
-            user_prompt += f"Here's the latest response from the Agent: \n\n{agent_reply}\n\n"
-            user_prompt += "Please evaluate the response, replying with whether it is acceptable and your feedback."
-            return user_prompt
+    async def evaluate(
+        self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]
+    ) -> Evaluation:
+        try:
+            messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
+                {"role": "user", "content": self.evaluator_user_prompt(user_message, agent_reply, extended_history)}
+            ]
+            evaluation = await self.evaluator_model.agenerate_response(  # type: ignore
+                messages=messages, response_format=Evaluation, **self.evaluator_kwargs
+            )
+            assert isinstance(evaluation, Evaluation)
+            return evaluation
+        except Exception as e:
+            print(f"Error during evaluation: {e}")
+            return Evaluation(is_acceptable=True, feedback="")
 
-        async def evaluate(user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
-            try:
-                messages = [{"role": "system", "content": self.evaluator_system_prompt}] + [
-                    {"role": "user", "content": evaluator_user_prompt(user_message, agent_reply, extended_history)}
-                ]
-                evaluation = await self.evaluator_model.agenerate_response(  # type: ignore
-                    messages=messages, response_format=Evaluation, **self.evaluator_kwargs
-                )
-                assert isinstance(evaluation, Evaluation)
-                return evaluation
-            except Exception as e:
-                print(f"Error during evaluation: {e}")
-                return Evaluation(is_acceptable=True, feedback="")
+    @staticmethod
+    def sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove extra fields from messages that may be added by Gradio or other UIs."""
+        return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
-        def sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-            """Remove extra fields from messages that may be added by Gradio or other UIs."""
-            return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+    async def handle_tool_call(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
+        """Handle tool calls - uses self.tool_map and self.mcp_client."""
+        results = []
+        for tool_call in tool_calls:
 
-        async def handle_tool_call(tool_calls: List[Any]) -> List[Dict[str, Any]]:
-            """Handle tool calls - uses self.tool_map and self.mcp_client."""
-            results = []
-            for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            print(f"Tool called: {tool_name}", flush=True)
 
-                tool_name = tool_call.function.name
-                arguments = json.loads(tool_call.function.arguments)
-                print(f"Tool called: {tool_name}", flush=True)
+            tool = self.tool_map.get(tool_name)
+            if tool:
+                # Custom tool function
+                result = tool(**arguments)
+            elif self.mcp_client:
+                # MCP tool
+                mcp_tool_result = await self.mcp_client.call_tool(tool_name, arguments)
+                result = process_tool_result_content(mcp_tool_result)
+            else:
+                # Unknown tool
+                result = {}
 
-                tool = self.tool_map.get(tool_name)
-                if tool:
-                    # Custom tool function
-                    result = tool(**arguments)
-                elif self.mcp_client:
-                    # MCP tool
-                    mcp_tool_result = await self.mcp_client.call_tool(tool_name, arguments)
-                    result = process_tool_result_content(mcp_tool_result)
-                else:
-                    # Unknown tool
-                    result = {}
+            # print(f"Tool result: {result}", flush=True)
+            results.append(self.generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
+        return results
 
-                # print(f"Tool result: {result}", flush=True)
-                results.append(self.generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
-            return results
-
-        async def get_reply(
-            extended_history: List[Dict[str, Any]],
-        ) -> Tuple[Union[str, BaseModel], List[Dict[str, Any]]]:
-            """Generate reply with tool calling support."""
-            messages = extended_history.copy()
-            try:
+    async def get_reply(
+        self,
+        extended_history: List[Dict[str, Any]],
+    ) -> Tuple[Union[str, BaseModel], List[Dict[str, Any]]]:
+        """Generate reply with tool calling support."""
+        messages = extended_history.copy()
+        try:
+            reply = await self.generator_model.agenerate_response(
+                messages=messages,
+                tools=self.openai_tools,
+                **self.generator_kwargs,
+            )
+            while isinstance(reply, list):
+                messages.append({"role": "assistant", "content": None, "tool_calls": reply})
+                messages += await self.handle_tool_call(reply)
                 reply = await self.generator_model.agenerate_response(
                     messages=messages,
                     tools=self.openai_tools,
                     **self.generator_kwargs,
                 )
-                while isinstance(reply, list):
-                    messages.append({"role": "assistant", "content": None, "tool_calls": reply})
-                    messages += await handle_tool_call(reply)
-                    reply = await self.generator_model.agenerate_response(
-                        messages=messages,
-                        tools=self.openai_tools,
-                        **self.generator_kwargs,
-                    )
-                return reply, messages
-            except Exception as e:
-                print(f"Error generating reply: {e}")
-                return "Sorry, I encountered an error while generating a response.", messages
+            return reply, messages
+        except Exception as e:
+            print(f"Error generating reply: {e}")
+            return "Sorry, I encountered an error while generating a response.", messages
 
-        async def rerun(
-            reply: str, feedback: str, extended_history: List[Dict[str, Any]]
-        ) -> Tuple[Union[str, BaseModel], List[Dict[str, Any]]]:
-            """Regenerate reply based on evaluator feedback."""
-            updated_system_prompt = (
-                self.system_prompt
-                + "\n\n## Previous answer rejected\nYou just tried to reply, but the quality control rejected your reply\n"
-            )
-            updated_system_prompt += f"## Your attempted answer:\n{reply}\n\n"
-            updated_system_prompt += f"## Reason for rejection:\n{feedback}\n\n"
-            messages = [{"role": "system", "content": updated_system_prompt}] + extended_history[
-                1:
-            ]  # exclude previous system prompt
-            return await get_reply(messages)
+    async def rerun(
+        self, reply: str, feedback: str, extended_history: List[Dict[str, Any]]
+    ) -> Tuple[Union[str, BaseModel], List[Dict[str, Any]]]:
+        """Regenerate reply based on evaluator feedback."""
+        updated_system_prompt = (
+            self.system_prompt
+            + "\n\n## Previous answer rejected\nYou just tried to reply, but the quality control rejected your reply\n"
+        )
+        updated_system_prompt += f"## Your attempted answer:\n{reply}\n\n"
+        updated_system_prompt += f"## Reason for rejection:\n{feedback}\n\n"
+        messages = [{"role": "system", "content": updated_system_prompt}] + extended_history[
+            1:
+        ]  # exclude previous system prompt
+        return await self.get_reply(messages)
 
-        # Main chat logic
+    async def chat(self, message: str, history: List[Dict[str, Any]]) -> str:
         messages = (
             [{"role": "system", "content": self.system_prompt}]
-            + sanitize_messages(history)
+            + self.sanitize_messages(history)
             + [{"role": "user", "content": message}]
         )
-        reply, extended_history = await get_reply(messages)
+        reply, extended_history = await self.get_reply(messages)
 
         if self.evaluator_model:
             responses = 1
             while responses < self.response_limit:
 
-                evaluation = await evaluate(message, reply, extended_history)  # type: ignore
+                evaluation = await self.evaluate(message, reply, extended_history)  # type: ignore
 
                 if evaluation.is_acceptable:
                     print("Passed evaluation - returning reply")
@@ -325,7 +328,7 @@ class AsyncChatFactory:
 
                 print("Failed evaluation - retrying")
                 print(evaluation.feedback)
-                reply, extended_history = await rerun(reply, evaluation.feedback, extended_history)  # type: ignore
+                reply, extended_history = await self.rerun(reply, evaluation.feedback, extended_history)  # type: ignore
                 responses += 1
 
             print(f"****Final response after {responses} attempt(s).")
@@ -349,35 +352,9 @@ class AsyncChatFactory:
         Yields:
             str: Accumulated response text (Gradio expects accumulated, not deltas)
         """
-
-        def sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-            """Remove extra fields from messages that may be added by Gradio or other UIs."""
-            return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
-
-        async def handle_tool_call(tool_calls: List[Any]) -> List[Dict[str, Any]]:
-            """Handle tool calls - uses self.tool_map and self.mcp_client."""
-            results = []
-            for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                arguments = json.loads(tool_call.function.arguments)
-                print(f"Tool called: {tool_name}", flush=True)
-
-                tool = self.tool_map.get(tool_name)
-                if tool:
-                    result = tool(**arguments)
-                elif self.mcp_client:
-                    mcp_tool_result = await self.mcp_client.call_tool(tool_name, arguments)
-                    result = process_tool_result_content(mcp_tool_result)
-                else:
-                    result = {}
-
-                results.append(self.generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
-            return results
-
-        # Build messages
         messages = (
             [{"role": "system", "content": self.system_prompt}]
-            + sanitize_messages(history)
+            + self.sanitize_messages(history)
             + [{"role": "user", "content": message}]
         )
 
@@ -393,7 +370,7 @@ class AsyncChatFactory:
                 # Tool calling loop
                 while isinstance(reply, list):
                     messages.append({"role": "assistant", "content": None, "tool_calls": reply})
-                    messages += await handle_tool_call(reply)
+                    messages += await self.handle_tool_call(reply)
                     reply = await self.generator_model.agenerate_response(
                         messages=messages,
                         tools=self.openai_tools,
