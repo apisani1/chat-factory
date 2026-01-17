@@ -173,6 +173,19 @@ class ChatFactory:
         return self.get_reply(messages)
 
     def chat(self, message: str, history: List[Dict[str, Any]]) -> str:
+        """Process a chat message and return a response.
+
+        Handles the complete chat flow including tool calling and optional
+        evaluation with retry logic when an evaluator model is configured.
+
+        Args:
+            message: The user's message to respond to.
+            history: Conversation history as a list of message dicts with
+                'role' and 'content' keys.
+
+        Returns:
+            The assistant's response string.
+        """
         messages = (
             [{"role": "system", "content": self.system_prompt}]
             + sanitize_messages(history)
