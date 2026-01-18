@@ -1,12 +1,15 @@
 import os
 
 import gradio as gr
-
 from chat_factory import (
     ChatFactory,
     ChatModel,
 )
 from chat_factory.utils.factory_utils import configure_logging
+from utils.gradio_mcp_helpers import (
+    MCPHandler,
+    create_mcp_input_components,
+)
 from utils.tools import tools
 
 
@@ -53,9 +56,86 @@ def main() -> None:
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)
 
+        # State to track current prompt/resource selection
+        current_prompt_state: gr.State = gr.State(value={"name": None, "arguments": []})
+        current_resource_state: gr.State = gr.State(value={"name": None, "uri": None, "variables": []})
+
+        # MCP content display
+        mcp_content_display = gr.Textbox(
+            label="MCP Content",
+            lines=5,
+            visible=False,
+            interactive=False,
+        )
+
+        # Prompt input section
+        with gr.Group(visible=False) as prompt_input_group:
+            prompt_instructions, prompt_inputs, prompt_submit_btn = create_mcp_input_components()
+
+        # Resource input section
+        with gr.Group(visible=False) as resource_input_group:
+            resource_instructions, resource_inputs, resource_submit_btn = create_mcp_input_components()
+
+        # Main control row with dropdowns and exit button
         with gr.Row():
+            prompts_dropdown = gr.Dropdown(
+                choices=chat_factory.prompt_names if chat_factory.prompt_names else ["No prompts available"],
+                label="Prompts",
+                interactive=bool(chat_factory.prompt_names),
+                scale=1,
+            )
+            resources_dropdown = gr.Dropdown(
+                choices=chat_factory.resource_names if chat_factory.resource_names else ["No resources available"],
+                label="Resources",
+                interactive=bool(chat_factory.resource_names),
+                scale=1,
+            )
             exit_btn = gr.Button("Exit", variant="stop", scale=0)
 
+        # Create MCP handler
+        handler = MCPHandler(
+            chat_factory=chat_factory
+        )
+
+        # Build output lists for event handlers
+        prompt_outputs = [
+            current_prompt_state,
+            mcp_content_display,
+            prompt_input_group,
+            prompt_instructions,
+            *prompt_inputs,
+            prompt_submit_btn,
+        ]
+        resource_outputs = [
+            current_resource_state,
+            mcp_content_display,
+            resource_input_group,
+            resource_instructions,
+            *resource_inputs,
+            resource_submit_btn,
+        ]
+
+        # Connect event handlers
+        prompts_dropdown.change(
+            fn=handler.on_prompt_selected,
+            inputs=[prompts_dropdown],
+            outputs=prompt_outputs,
+        )
+        resources_dropdown.change(
+            fn=handler.on_resource_selected,
+            inputs=[resources_dropdown],
+            outputs=resource_outputs,
+        )
+        prompt_submit_btn.click(
+            fn=handler.on_prompt_submit,
+            inputs=[current_prompt_state, *prompt_inputs],
+            outputs=[mcp_content_display, prompt_input_group],
+        )
+        resource_submit_btn.click(
+            fn=handler.on_resource_submit,
+            inputs=[current_resource_state, *resource_inputs],
+            outputs=[mcp_content_display, resource_input_group],
+        )
         exit_btn.click(fn=shutdown, outputs=gr.Textbox(visible=False))
 
     demo.launch()

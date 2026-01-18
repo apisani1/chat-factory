@@ -14,8 +14,10 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     Prompt,
+    PromptArgument,
     Resource,
     ResourceLink,
+    ResourceTemplate,
     TextContent,
 )
 from mcp_multi_server.utils import extract_template_variables
@@ -69,7 +71,9 @@ def process_tool_result_content(tool_result: CallToolResult) -> str:
     return "\n".join(text_parts) if text_parts else ""
 
 
-def search_prompt(prompts: Dict[str, Prompt], prompt_name: str) -> Tuple[Optional[Prompt], Optional[Dict]]:
+def search_prompt(
+    prompts: Dict[str, Prompt], prompt_name: str
+) -> Tuple[Optional[Prompt], Optional[List[PromptArgument]]]:
     """Search for a prompt by name in the given prompts dictionary.
 
     Args:
@@ -86,15 +90,13 @@ def search_prompt(prompts: Dict[str, Prompt], prompt_name: str) -> Tuple[Optiona
     return None, None
 
 
-def get_prompt_arguments(prompt: Prompt) -> dict[str, str]:
+def get_prompt_arguments(prompt_arguments: List[PromptArgument]) -> dict[str, str]:
     """Ask user for prompt arguments interactively."""
-    if not prompt.arguments:
+    if not prompt_arguments:
         return {}
+    print("Please provide values for the following arguments:")
     arguments: dict[str, str] = {}
-    print(f"\nEntering arguments for prompt '{prompt.name}':")
-    print(f"Description: {prompt.description}")
-    print("(Leave empty for optional arguments)\n")
-    for arg in prompt.arguments:
+    for arg in prompt_arguments:
         required_text = "(required)" if arg.required else "(optional)"
         user_input = input(f"Enter {arg.name} {required_text}: ").strip()
         if user_input or arg.required:
@@ -147,7 +149,7 @@ def convert_mcp_content_to_message(
 
 
 def search_resource(
-    resources: Dict[str, Resource], resource_name: str
+    resources: Dict[str, Union[Resource, ResourceTemplate]], resource_name: str
 ) -> Tuple[Optional[Resource], Optional[str], Optional[List[str]]]:
     """Search for a prompt by name in the given prompts dictionary.
 
@@ -163,7 +165,7 @@ def search_resource(
     variables = None
     if resource:
         if hasattr(resource, "uri"):
-            uri = resource.uri
+            uri = resource.uri  # type: ignore[union-attr]
         elif hasattr(resource, "uriTemplate"):
             uri = resource.uriTemplate  # type: ignore[union-attr]
             variables = extract_template_variables(uri)
@@ -172,7 +174,7 @@ def search_resource(
     return resource, uri, variables  # type: ignore
 
 
-def get_template_variables_from_user(variables: List[str]) -> dict[str, str]:
+def get_template_variables(variables: List[str]) -> dict[str, str]:
     """Ask user for values for variables extracted from URI template"""
     print("Please provide values for the following variables:")
     values = {}

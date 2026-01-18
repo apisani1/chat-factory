@@ -1,4 +1,5 @@
 import base64
+import logging
 import mimetypes
 
 from mcp.server.fastmcp import FastMCP
@@ -11,19 +12,21 @@ from mcp.types import (
     ResourceLink,
 )
 from mcp_multi_server.utils import configure_logging
-from chat_factory.media_handler import (
+from media_handler import (
     get_audio,
     get_image,
 )
 
 
-# Create server
+logger = logging.getLogger(__name__)
+
 mcp = FastMCP("MCP Tool Server")
 
 
 @mcp._mcp_server.set_logging_level()
 async def set_logging_level(level: str) -> None:
-    configure_logging(name="mcp", level=level)
+    configure_logging(name="tool_server", level=level)
+    logger.info(f"Tool server logging level set to {level}")
 
 
 # Tools returning non text types for tool demonstration purposes
@@ -207,5 +210,5 @@ def get_uri_content_tool(content_uri: str) -> CallToolResult:
 
 
 if __name__ == "__main__":
-    print("Starting MCP Tool Server...")
+    logger.info("Starting MCP Tool Server...")
     mcp.run()

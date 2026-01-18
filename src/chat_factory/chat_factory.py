@@ -134,28 +134,14 @@ class ChatFactory:
     def mcp_resources(self) -> Dict[str, Any]:
         """Get MCP resources if MCP client is initialized."""
         if self.mcp_client:
-            return self._mcp_resources
+            return {**self._mcp_resources, **self._mcp_resource_templates}
         return {}
 
     @property
     def resource_names(self) -> List[str]:
         """Get MCP resource names if MCP client is initialized."""
         if self.mcp_client:
-            return self._resource_names
-        return []
-
-    @property
-    def mcp_resource_templates(self) -> Dict[str, Any]:
-        """Get MCP resource templates if MCP client is initialized."""
-        if self.mcp_client:
-            return self._mcp_resource_templates
-        return {}
-
-    @property
-    def template_names(self) -> List[str]:
-        """Get MCP resource template names if MCP client is initialized."""
-        if self.mcp_client:
-            return self._template_names
+            return self._resource_names + self._template_names
         return []
 
     def set_mcp_logging_level(self, level: str) -> None:
@@ -186,7 +172,7 @@ class ChatFactory:
 
         if not self.mcp_client:
             return []
-        prompt, prompt_arguments = search_prompt(self._mcp_prompts, prompt_name)
+        prompt, prompt_arguments = search_prompt(self.mcp_prompts, prompt_name)
         if not prompt:
             return []
         arguments = get_prompt_arguments(prompt_arguments)
@@ -211,7 +197,7 @@ class ChatFactory:
         """
         if not self.mcp_client:
             return []
-        resource, uri, variables = search_resource(self._mcp_resources, resource_name)
+        resource, uri, variables = search_resource(self.mcp_resources, resource_name)
         if not resource:
             return []
         if variables:

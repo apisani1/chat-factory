@@ -10,6 +10,39 @@
         "-m",
         "todo_server"
       ]
+    },
+    "tool_server": {
+      "command": "/Users/antonio/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "python3",
+        "-m",
+        "tool_server"
+      ]
+    },
+    "prompt_server": {
+      "command": "/Users/antonio/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "python3",
+        "-m",
+        "prompt_server"
+      ]
+    },
+    "resource_server": {
+      "command": "/Users/antonio/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "python3",
+        "-m",
+        "resource_server"
+      ]
     }
   }
 }

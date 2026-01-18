@@ -99,7 +99,7 @@
         "reportUnknownArgumentType": "none",
         "reportUnknownVariableType": "none"
     },
-    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoImportCompletions": false,
     "python.analysis.completeFunctionParens": false,
     "python.analysis.autoFormatStrings": true,
     "python.analysis.logLevel": "Error",
