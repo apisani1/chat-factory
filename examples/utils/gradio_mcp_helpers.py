@@ -1,10 +1,14 @@
 """Gradio helper functions for MCP prompts and resources UI."""
 
+import base64
+import logging
+import tempfile
 from typing import (
     Any,
     Dict,
     List,
     Tuple,
+    Union,
 )
 
 import gradio as gr
@@ -16,6 +20,125 @@ from chat_factory.utils.mcp_utils import (
     search_prompt,
     search_resource,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _save_base64_to_temp_file(b64_data: str, extension: str) -> str:
+    """Decode base64 data and save to a temporary file.
+
+    Args:
+        b64_data: Base64-encoded data.
+        extension: File extension (e.g., "png", "wav").
+
+    Returns:
+        Path to the temporary file.
+
+    Raises:
+        ValueError: If base64 decoding fails.
+    """
+    decoded = base64.b64decode(b64_data)
+    with tempfile.NamedTemporaryFile(suffix=f".{extension}", delete=False) as tmp:
+        tmp.write(decoded)
+        return tmp.name
+
+
+def convert_openai_content_to_gradio(
+    content: Union[str, List[Dict[str, Any]]]
+) -> Union[str, List[Any]]:
+    """Convert OpenAI-format content to Gradio-format content.
+
+    OpenAI uses: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+    Gradio uses: {"type": "file", "file": {"path": "/path/to/image.png"}}
+
+    Base64 data URLs are decoded and saved to temporary files since Gradio
+    requires file paths for media content.
+
+    Args:
+        content: OpenAI-format content (string or list of content blocks).
+
+    Returns:
+        Gradio-format content.
+    """
+    if isinstance(content, str):
+        return content
+
+    if not isinstance(content, list):
+        return content
+
+    gradio_content: List[Any] = []
+    for item in content:
+        if not isinstance(item, dict):
+            gradio_content.append(item)
+            continue
+
+        item_type = item.get("type")
+
+        if item_type == "text":
+            gradio_content.append({"type": "text", "text": item.get("text", "")})
+
+        elif item_type == "image_url":
+            image_url = item.get("image_url", {})
+            url = image_url.get("url", "") if isinstance(image_url, dict) else ""
+
+            if url.startswith("data:"):
+                try:
+                    # Parse data URL: data:image/png;base64,<data>
+                    header, b64_data = url.split(",", 1)
+                    mime_type = header.split(":")[1].split(";")[0]  # e.g., "image/png"
+                    ext = mime_type.split("/")[1]  # e.g., "png"
+
+                    temp_path = _save_base64_to_temp_file(b64_data, ext)
+                    gradio_content.append({"type": "file", "file": {"path": temp_path}})
+                except (ValueError, IndexError) as e:
+                    logger.warning("Failed to decode base64 image: %s", e)
+                    gradio_content.append({"type": "text", "text": "[Image could not be displayed]"})
+            else:
+                # Regular URL - use as file path
+                gradio_content.append({"type": "file", "file": {"path": url}})
+
+        elif item_type == "input_audio":
+            audio_data = item.get("input_audio", {})
+            if isinstance(audio_data, dict):
+                data = audio_data.get("data", "")
+                audio_format = audio_data.get("format", "wav")
+
+                try:
+                    temp_path = _save_base64_to_temp_file(data, audio_format)
+                    gradio_content.append({"type": "file", "file": {"path": temp_path}})
+                except (ValueError, IndexError) as e:
+                    logger.warning("Failed to decode base64 audio: %s", e)
+                    gradio_content.append({"type": "text", "text": "[Audio could not be displayed]"})
+            else:
+                gradio_content.append(item)
+
+        else:
+            # Pass through unknown types
+            gradio_content.append(item)
+
+    return gradio_content
+
+
+def convert_openai_messages_to_gradio(
+    messages: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Convert a list of OpenAI-format messages to Gradio-format messages.
+
+    Args:
+        messages: List of OpenAI-format messages.
+
+    Returns:
+        List of Gradio-format messages.
+    """
+    gradio_messages = []
+    for msg in messages:
+        gradio_msg = {"role": msg.get("role", "user")}
+        content = msg.get("content")
+        if content is not None:
+            gradio_msg["content"] = convert_openai_content_to_gradio(content)
+        gradio_messages.append(gradio_msg)
+    return gradio_messages
 
 
 # Maximum number of arguments/variables supported in the UI
@@ -196,79 +319,106 @@ def collect_variables_from_inputs(variables: List[str], input_values: List[str])
 
 
 # Response builder helpers for handler methods
-def _empty_prompt_response() -> Tuple[Any, ...]:
+# All helpers now include chatbot history as the last element of the returned tuple
+
+
+def _empty_prompt_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for invalid/unavailable prompt selection."""
     return (
         {"name": None, "arguments": []},
         gr.update(visible=False),
         gr.update(visible=False),
         *hide_all_inputs(),
+        history,  # Return history unchanged
     )
 
 
-def _empty_resource_response() -> Tuple[Any, ...]:
+def _empty_resource_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for invalid/unavailable resource selection."""
     return (
         {"name": None, "uri": None, "variables": []},
         gr.update(visible=False),
         gr.update(visible=False),
         *hide_all_inputs(),
+        history,  # Return history unchanged
     )
 
 
-def _prompt_content_response(content: str) -> Tuple[Any, ...]:
-    """Build response showing prompt content (no arguments needed)."""
+def _prompt_content_response(
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+) -> Tuple[Any, ...]:
+    """Build response showing prompt content and injecting messages into chat history."""
+    content = format_messages_for_display(messages) if messages else "No content"
+    gradio_messages = convert_openai_messages_to_gradio(messages)
     return (
         {"name": None, "arguments": []},
         gr.update(visible=True, value=content),
         gr.update(visible=False),
         *hide_all_inputs(),
+        history + gradio_messages,  # Inject messages into chatbot
     )
 
 
-def _resource_content_response(content: str) -> Tuple[Any, ...]:
-    """Build response showing resource content (no variables needed)."""
+def _resource_content_response(
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+) -> Tuple[Any, ...]:
+    """Build response showing resource content and injecting messages into chat history."""
+    content = format_messages_for_display(messages) if messages else "No content"
+    gradio_messages = convert_openai_messages_to_gradio(messages)
     return (
         {"name": None, "uri": None, "variables": []},
         gr.update(visible=True, value=content),
         gr.update(visible=False),
         *hide_all_inputs(),
+        history + gradio_messages,  # Inject messages into chatbot
     )
 
 
-def _prompt_input_response(prompt_name: str, prompt_arguments: List[Any]) -> Tuple[Any, ...]:
+def _prompt_input_response(
+    prompt_name: str, prompt_arguments: List[Any], history: List[Dict[str, Any]]
+) -> Tuple[Any, ...]:
     """Build response showing input fields for prompt arguments."""
     return (
         {"name": prompt_name, "arguments": list(prompt_arguments)},
         gr.update(visible=False),
         gr.update(visible=True),
         *build_prompt_input_updates(list(prompt_arguments)),
+        history,  # Return history unchanged (waiting for submit)
     )
 
 
-def _resource_input_response(resource_name: str, uri: str, variables: List[str]) -> Tuple[Any, ...]:
+def _resource_input_response(
+    resource_name: str, uri: str, variables: List[str], history: List[Dict[str, Any]]
+) -> Tuple[Any, ...]:
     """Build response showing input fields for resource variables."""
     return (
         {"name": resource_name, "uri": uri, "variables": variables},
         gr.update(visible=False),
         gr.update(visible=True),
         *build_resource_input_updates(variables),
+        history,  # Return history unchanged (waiting for submit)
     )
 
 
-def _submit_empty_response() -> Tuple[Any, ...]:
+def _submit_empty_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for empty submit (no name in state)."""
     return (
         gr.update(visible=False),
         gr.update(visible=False),
+        history,  # Return history unchanged
     )
 
 
-def _submit_content_response(content: str) -> Tuple[Any, ...]:
-    """Build response showing submitted content."""
+def _submit_content_response(
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+) -> Tuple[Any, ...]:
+    """Build response showing submitted content and injecting messages into chat history."""
+    content = format_messages_for_display(messages) if messages else "No content"
+    gradio_messages = convert_openai_messages_to_gradio(messages)
     return (
         gr.update(visible=True, value=content),
         gr.update(visible=False),
+        history + gradio_messages,  # Inject messages into chatbot
     )
 
 
@@ -283,57 +433,95 @@ class MCPHandler:
         """
         self.chat_factory = chat_factory
 
-    def on_prompt_selected(self, prompt_name: str) -> Tuple[Any, ...]:
-        """Handle prompt selection - show content directly or show input fields."""
+    def on_prompt_selected(
+        self, prompt_name: str, current_history: List[Dict[str, Any]]
+    ) -> Tuple[Any, ...]:
+        """Handle prompt selection - show content directly or show input fields.
+
+        Args:
+            prompt_name: Name of the selected prompt.
+            current_history: Current chatbot history.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not prompt_name or prompt_name == "No prompts available":
-            return _empty_prompt_response()
+            return _empty_prompt_response(current_history)
 
         prompt, prompt_arguments = search_prompt(self.chat_factory.mcp_prompts, prompt_name)
         if not prompt:
-            return _empty_prompt_response()
+            return _empty_prompt_response(current_history)
 
         if not prompt_arguments:
-            result = self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
-            content = format_messages_for_display(result) if result else "No content"
-            return _prompt_content_response(content)
+            messages = self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
+            return _prompt_content_response(messages or [], current_history)
 
-        return _prompt_input_response(prompt_name, prompt_arguments)
+        return _prompt_input_response(prompt_name, prompt_arguments, current_history)
 
-    def on_prompt_submit(self, state: Dict[str, Any], *input_values: str) -> Tuple[Any, ...]:
-        """Handle prompt submit - collect values and instantiate prompt."""
+    def on_prompt_submit(
+        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+    ) -> Tuple[Any, ...]:
+        """Handle prompt submit - collect values and instantiate prompt.
+
+        Args:
+            state: Current prompt state with name and arguments.
+            current_history: Current chatbot history.
+            *input_values: Values from input textboxes.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not state.get("name"):
-            return _submit_empty_response()
+            return _submit_empty_response(current_history)
 
         arguments = collect_arguments_from_inputs(state["arguments"], list(input_values))
-        result = self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
-        content = format_messages_for_display(result) if result else "No content"
-        return _submit_content_response(content)
+        messages = self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
+        return _submit_content_response(messages or [], current_history)
 
-    def on_resource_selected(self, resource_name: str) -> Tuple[Any, ...]:
-        """Handle resource selection - show content directly or show input fields."""
+    def on_resource_selected(
+        self, resource_name: str, current_history: List[Dict[str, Any]]
+    ) -> Tuple[Any, ...]:
+        """Handle resource selection - show content directly or show input fields.
+
+        Args:
+            resource_name: Name of the selected resource.
+            current_history: Current chatbot history.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not resource_name or resource_name == "No resources available":
-            return _empty_resource_response()
+            return _empty_resource_response(current_history)
 
         resource, uri, variables = search_resource(self.chat_factory.mcp_resources, resource_name)
         if not resource:
-            return _empty_resource_response()
+            return _empty_resource_response(current_history)
 
         if not variables:
-            result = self.chat_factory.instantiate_resource(resource_name, lambda _: {})
-            content = format_messages_for_display(result) if result else "No content"
-            return _resource_content_response(content)
+            messages = self.chat_factory.instantiate_resource(resource_name, lambda _: {})
+            return _resource_content_response(messages or [], current_history)
 
-        return _resource_input_response(resource_name, uri, variables)  # type: ignore
+        return _resource_input_response(resource_name, uri, variables, current_history)  # type: ignore
 
-    def on_resource_submit(self, state: Dict[str, Any], *input_values: str) -> Tuple[Any, ...]:
-        """Handle resource submit - collect values and instantiate resource."""
+    def on_resource_submit(
+        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+    ) -> Tuple[Any, ...]:
+        """Handle resource submit - collect values and instantiate resource.
+
+        Args:
+            state: Current resource state with name, uri, and variables.
+            current_history: Current chatbot history.
+            *input_values: Values from input textboxes.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not state.get("name"):
-            return _submit_empty_response()
+            return _submit_empty_response(current_history)
 
         variables = collect_variables_from_inputs(state["variables"], list(input_values))
-        result = self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
-        content = format_messages_for_display(result) if result else "No content"
-        return _submit_content_response(content)
+        messages = self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
+        return _submit_content_response(messages or [], current_history)
 
 
 class AsyncMCPHandler:
@@ -347,54 +535,92 @@ class AsyncMCPHandler:
         """
         self.chat_factory = chat_factory
 
-    async def on_prompt_selected(self, prompt_name: str) -> Tuple[Any, ...]:
-        """Handle prompt selection - show content directly or show input fields."""
+    async def on_prompt_selected(
+        self, prompt_name: str, current_history: List[Dict[str, Any]]
+    ) -> Tuple[Any, ...]:
+        """Handle prompt selection - show content directly or show input fields.
+
+        Args:
+            prompt_name: Name of the selected prompt.
+            current_history: Current chatbot history.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not prompt_name or prompt_name == "No prompts available":
-            return _empty_prompt_response()
+            return _empty_prompt_response(current_history)
 
         prompt, prompt_arguments = search_prompt(self.chat_factory.mcp_prompts, prompt_name)
         if not prompt:
-            return _empty_prompt_response()
+            return _empty_prompt_response(current_history)
 
         if not prompt_arguments:
-            result = await self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
-            content = format_messages_for_display(result) if result else "No content"
-            return _prompt_content_response(content)
+            messages = await self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
+            return _prompt_content_response(messages or [], current_history)
 
-        return _prompt_input_response(prompt_name, prompt_arguments)
+        return _prompt_input_response(prompt_name, prompt_arguments, current_history)
 
-    async def on_prompt_submit(self, state: Dict[str, Any], *input_values: str) -> Tuple[Any, ...]:
-        """Handle prompt submit - collect values and instantiate prompt."""
+    async def on_prompt_submit(
+        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+    ) -> Tuple[Any, ...]:
+        """Handle prompt submit - collect values and instantiate prompt.
+
+        Args:
+            state: Current prompt state with name and arguments.
+            current_history: Current chatbot history.
+            *input_values: Values from input textboxes.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not state.get("name"):
-            return _submit_empty_response()
+            return _submit_empty_response(current_history)
 
         arguments = collect_arguments_from_inputs(state["arguments"], list(input_values))
-        result = await self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
-        content = format_messages_for_display(result) if result else "No content"
-        return _submit_content_response(content)
+        messages = await self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
+        return _submit_content_response(messages or [], current_history)
 
-    async def on_resource_selected(self, resource_name: str) -> Tuple[Any, ...]:
-        """Handle resource selection - show content directly or show input fields."""
+    async def on_resource_selected(
+        self, resource_name: str, current_history: List[Dict[str, Any]]
+    ) -> Tuple[Any, ...]:
+        """Handle resource selection - show content directly or show input fields.
+
+        Args:
+            resource_name: Name of the selected resource.
+            current_history: Current chatbot history.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not resource_name or resource_name == "No resources available":
-            return _empty_resource_response()
+            return _empty_resource_response(current_history)
 
         resource, uri, variables = search_resource(self.chat_factory.mcp_resources, resource_name)
         if not resource:
-            return _empty_resource_response()
+            return _empty_resource_response(current_history)
 
         if not variables:
-            result = await self.chat_factory.instantiate_resource(resource_name, lambda _: {})
-            content = format_messages_for_display(result) if result else "No content"
-            return _resource_content_response(content)
+            messages = await self.chat_factory.instantiate_resource(resource_name, lambda _: {})
+            return _resource_content_response(messages or [], current_history)
 
-        return _resource_input_response(resource_name, uri, variables)  # type: ignore
+        return _resource_input_response(resource_name, uri, variables, current_history)  # type: ignore
 
-    async def on_resource_submit(self, state: Dict[str, Any], *input_values: str) -> Tuple[Any, ...]:
-        """Handle resource submit - collect values and instantiate resource."""
+    async def on_resource_submit(
+        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+    ) -> Tuple[Any, ...]:
+        """Handle resource submit - collect values and instantiate resource.
+
+        Args:
+            state: Current resource state with name, uri, and variables.
+            current_history: Current chatbot history.
+            *input_values: Values from input textboxes.
+
+        Returns:
+            Tuple of updates including updated chatbot history.
+        """
         if not state.get("name"):
-            return _submit_empty_response()
+            return _submit_empty_response(current_history)
 
         variables = collect_variables_from_inputs(state["variables"], list(input_values))
-        result = await self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
-        content = format_messages_for_display(result) if result else "No content"
-        return _submit_content_response(content)
+        messages = await self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
+        return _submit_content_response(messages or [], current_history)

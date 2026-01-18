@@ -119,13 +119,15 @@ def main() -> None:
     configure_logging(level="WARNING")
 
     with gr.Blocks() as demo:
-        gr.ChatInterface(fn=chat)
+        # Create explicit chatbot for MCP message injection
+        chatbot = gr.Chatbot(label="Chat")
+        gr.ChatInterface(fn=chat, chatbot=chatbot)
 
         # State to track current prompt/resource selection
         current_prompt_state: gr.State = gr.State(value={"name": None, "arguments": []})
         current_resource_state: gr.State = gr.State(value={"name": None, "uri": None, "variables": []})
 
-        # MCP content display
+        # MCP content display (for debugging/display purposes)
         mcp_content_display = gr.Textbox(
             label="MCP Content",
             lines=5,
@@ -157,7 +159,7 @@ def main() -> None:
             )
             exit_btn = gr.Button("Exit", variant="stop", scale=0)
 
-        # Build output lists for event handlers
+        # Build output lists for event handlers (chatbot is last element)
         prompt_outputs = [
             current_prompt_state,
             mcp_content_display,
@@ -165,6 +167,7 @@ def main() -> None:
             prompt_instructions,
             *prompt_inputs,
             prompt_submit_btn,
+            chatbot,
         ]
         resource_outputs = [
             current_resource_state,
@@ -173,41 +176,58 @@ def main() -> None:
             resource_instructions,
             *resource_inputs,
             resource_submit_btn,
+            chatbot,
         ]
 
         # Wrapper functions to delegate to handler (initialized lazily)
-        async def on_prompt_selected(prompt_name: str) -> Any:
-            return await handler.on_prompt_selected(prompt_name) if handler else None
+        async def on_prompt_selected(
+            prompt_name: str, current_history: List[Dict[str, Any]]
+        ) -> Any:
+            if handler:
+                return await handler.on_prompt_selected(prompt_name, current_history)
+            return None
 
-        async def on_prompt_submit(state: Dict[str, Any], *input_values: str) -> Any:
-            return await handler.on_prompt_submit(state, *input_values) if handler else None
+        async def on_prompt_submit(
+            state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        ) -> Any:
+            if handler:
+                return await handler.on_prompt_submit(state, current_history, *input_values)
+            return None
 
-        async def on_resource_selected(resource_name: str) -> Any:
-            return await handler.on_resource_selected(resource_name) if handler else None
+        async def on_resource_selected(
+            resource_name: str, current_history: List[Dict[str, Any]]
+        ) -> Any:
+            if handler:
+                return await handler.on_resource_selected(resource_name, current_history)
+            return None
 
-        async def on_resource_submit(state: Dict[str, Any], *input_values: str) -> Any:
-            return await handler.on_resource_submit(state, *input_values) if handler else None
+        async def on_resource_submit(
+            state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        ) -> Any:
+            if handler:
+                return await handler.on_resource_submit(state, current_history, *input_values)
+            return None
 
-        # Connect event handlers
+        # Connect event handlers (chatbot included in inputs and outputs)
         prompts_dropdown.change(
             fn=on_prompt_selected,
-            inputs=[prompts_dropdown],
+            inputs=[prompts_dropdown, chatbot],
             outputs=prompt_outputs,
         )
         resources_dropdown.change(
             fn=on_resource_selected,
-            inputs=[resources_dropdown],
+            inputs=[resources_dropdown, chatbot],
             outputs=resource_outputs,
         )
         prompt_submit_btn.click(
             fn=on_prompt_submit,
-            inputs=[current_prompt_state, *prompt_inputs],
-            outputs=[mcp_content_display, prompt_input_group],
+            inputs=[current_prompt_state, chatbot, *prompt_inputs],
+            outputs=[mcp_content_display, prompt_input_group, chatbot],
         )
         resource_submit_btn.click(
             fn=on_resource_submit,
-            inputs=[current_resource_state, *resource_inputs],
-            outputs=[mcp_content_display, resource_input_group],
+            inputs=[current_resource_state, chatbot, *resource_inputs],
+            outputs=[mcp_content_display, resource_input_group, chatbot],
         )
         exit_btn.click(fn=shutdown, outputs=gr.Textbox(visible=False))
 
