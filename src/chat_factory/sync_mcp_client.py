@@ -11,18 +11,27 @@ import atexit
 import logging
 import threading
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from pathlib import Path
 from typing import (
     Any,
     Dict,
     Literal,
     Optional,
+    Union,
 )
+
+from pydantic import AnyUrl
 
 from mcp.types import (
     CallToolResult,
     EmptyResult,
+    GetPromptResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListResourceTemplatesResult,
     ListToolsResult,
     LoggingLevel,
+    ReadResourceResult,
     TextContent,
 )
 from mcp_multi_server import MultiServerClient
@@ -55,19 +64,29 @@ class SyncMultiServerClient:
         to schedule operations on the background event loop.
     """
 
-    def __init__(self, config_path: str):
-        """Initialize SyncMultiServerClient with config path.
+    def __init__(
+        self,
+        config_path: Optional[Union[str, Path]] = None,
+        config_dict: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize SyncMultiServerClient.
 
         Starts background thread and initializes MCP client during construction.
         Automatically registers cleanup handler to ensure proper shutdown on program exit.
 
         Args:
-            config_path: Path to MCP configuration file
+            config_path: Path to MCP configuration file.
+            config_dict: Configuration dictionary (alternative to config_path).
 
         Raises:
-            Exception: If MCP client initialization fails
+            ValueError: If neither or both config_path and config_dict are provided.
+            Exception: If MCP client initialization fails.
         """
+        if (config_path is None) == (config_dict is None):
+            raise ValueError("Exactly one of config_path or config_dict must be provided")
+
         self.config_path = config_path
+        self.config_dict = config_dict
         self.mcp_client: Optional[MultiServerClient] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.thread: Optional[threading.Thread] = None
@@ -99,6 +118,50 @@ class SyncMultiServerClient:
         # This ensures MCP client is properly shutdown when the program terminates,
         atexit.register(self.shutdown)
 
+    @classmethod
+    def from_config(cls, config_path: Union[str, Path]) -> "SyncMultiServerClient":
+        """Create a client from a configuration file path.
+
+        This is a convenience class method that's equivalent to calling the constructor
+        with a config_path argument.
+
+        Args:
+            config_path: Path to the JSON configuration file.
+
+        Returns:
+            A new SyncMultiServerClient instance.
+
+        Examples:
+            >>> client = SyncMultiServerClient.from_config("mcp_config.json")
+        """
+        return cls(config_path=config_path)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "SyncMultiServerClient":
+        """Create a client from a configuration dictionary.
+
+        This method allows programmatic configuration without needing a JSON file.
+
+        Args:
+            config_dict: Dictionary containing server configurations in the same
+                format as the JSON file (with "mcpServers" key).
+
+        Returns:
+            A new SyncMultiServerClient instance with the provided configuration.
+
+        Examples:
+            >>> config = {
+            ...     "mcpServers": {
+            ...         "tool_server": {
+            ...             "command": "python",
+            ...             "args": ["-m", "my_package.tool_server"]
+            ...         }
+            ...     }
+            ... }
+            >>> client = SyncMultiServerClient.from_dict(config)
+        """
+        return cls(config_dict=config_dict)
+
     def _start_background_loop(self) -> None:
         """Start background thread with event loop."""
         self.thread = threading.Thread(target=self._run_event_loop, daemon=True, name="MCPClientThread")
@@ -128,7 +191,10 @@ class SyncMultiServerClient:
         """
         try:
             # Enter the MCP client context (creates cancel scope in THIS task)
-            self.mcp_client = MultiServerClient.from_config(self.config_path)
+            if self.config_path is not None:
+                self.mcp_client = MultiServerClient.from_config(self.config_path)
+            else:
+                self.mcp_client = MultiServerClient.from_dict(self.config_dict)  # type: ignore[arg-type]
             await self.mcp_client.__aenter__()
 
             # Signal that initialization is complete
@@ -151,6 +217,51 @@ class SyncMultiServerClient:
                     await self.mcp_client.__aexit__(None, None, None)
                 except Exception as e:
                     logger.error("Error closing MCP client: %s", e)
+
+    def shutdown(self) -> None:
+        """Shutdown background thread and cleanup MCP client.
+
+        Safe to call multiple times. Waits up to 10 seconds for graceful cleanup.
+        """
+        logger.debug("Shutting down SyncMultiServerClient...")
+        if self.loop is not None and not self._shutdown:
+            self._shutdown = True
+
+            # Deadlock prevention: if called from event loop thread,
+            # we can't block waiting on the lifecycle future
+            if threading.current_thread() is self.thread:
+                self.loop.call_soon(self.loop.stop)
+                return
+
+            try:
+                # Signal shutdown and wait for lifecycle task to complete
+                # The task will exit the MCP client context properly
+                if self._lifecycle_future is not None:
+                    self._lifecycle_future.result(timeout=10)
+                    logger.debug("MCP client closed successfully")
+            except Exception as e:
+                # Errors expected during interpreter shutdown
+                logger.warning("Error during MCP client shutdown: %s", e)
+
+            try:
+                # Stop event loop
+                self.loop.call_soon_threadsafe(self.loop.stop)
+
+                # Wait for thread to finish
+                if self.thread is not None:
+                    self.thread.join(timeout=5)
+            except Exception:
+                # Thread might already be stopped during interpreter shutdown
+                pass
+
+    def __enter__(self) -> "SyncMultiServerClient":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Literal[False]:
+        """Exit context manager and cleanup."""
+        self.shutdown()
+        return False  # Don't suppress exceptions
 
     def set_logging_level(self, level: LoggingLevel) -> EmptyResult:
         """Set the logging level for the multi-server client and the MCP connected servers.
@@ -204,11 +315,69 @@ class SyncMultiServerClient:
             return ListToolsResult(tools=[])
 
         try:
-            # Access list_tools() synchronously - it's not async
             return self.mcp_client.list_tools()
         except Exception as e:
             logger.error("Error listing MCP tools: %s", e)
             return ListToolsResult(tools=[])
+
+    def list_prompts(self) -> ListPromptsResult:
+        """Get combined list of all prompts from all servers.
+
+        Returns:
+            ListPromptsResult containing all prompts from all servers with
+            server attribution in the serverName meta field.
+            Returns empty list if client not initialized or error occurs.
+        """
+        if self.mcp_client is None:
+            return ListPromptsResult(prompts=[], nextCursor=None)
+
+        try:
+            return self.mcp_client.list_prompts()
+        except Exception as e:
+            logger.error("Error listing prompts: %s", e)
+            return ListPromptsResult(prompts=[], nextCursor=None)
+
+    def list_resources(self, use_namespace: bool = True) -> ListResourcesResult:
+        """Get combined list of all resources from all servers.
+
+        Args:
+            use_namespace: Whether to namespace URIs with server name (default True).
+                When True, URIs are in format "server_name:original_uri" for auto-routing.
+
+        Returns:
+            ListResourcesResult containing all resources from all servers with
+            server attribution in the serverName meta field.
+            Returns empty list if client not initialized or error occurs.
+        """
+        if self.mcp_client is None:
+            return ListResourcesResult(resources=[], nextCursor=None)
+
+        try:
+            return self.mcp_client.list_resources(use_namespace=use_namespace)
+        except Exception as e:
+            logger.error("Error listing resources: %s", e)
+            return ListResourcesResult(resources=[], nextCursor=None)
+
+    def list_resource_templates(self, use_namespace: bool = True) -> ListResourceTemplatesResult:
+        """Get combined list of all resource templates from all servers.
+
+        Args:
+            use_namespace: Whether to namespace URI templates with server name (default True).
+                When True, templates are in format "server_name:original_template".
+
+        Returns:
+            ListResourceTemplatesResult containing all templates from all servers with
+            server attribution in the serverName meta field.
+            Returns empty list if client not initialized or error occurs.
+        """
+        if self.mcp_client is None:
+            return ListResourceTemplatesResult(resourceTemplates=[], nextCursor=None)
+
+        try:
+            return self.mcp_client.list_resource_templates(use_namespace=use_namespace)
+        except Exception as e:
+            logger.error("Error listing resource templates: %s", e)
+            return ListResourceTemplatesResult(resourceTemplates=[], nextCursor=None)
 
     def _create_error_result(self, error_message: str) -> CallToolResult:
         """Create a CallToolResult indicating an error.
@@ -270,48 +439,97 @@ class SyncMultiServerClient:
             logger.error("Error calling MCP tool '%s': %s", tool_name, e)
             return self._create_error_result(f"Error calling MCP tool '{tool_name}': {e}")
 
-    def shutdown(self) -> None:
-        """Shutdown background thread and cleanup MCP client.
+    def read_resource(
+        self,
+        uri: Union[str, AnyUrl],
+        server_name: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> ReadResourceResult:
+        """Read a resource with optional auto-routing via namespaced URIs.
 
-        Safe to call multiple times. Waits up to 10 seconds for graceful cleanup.
+        Args:
+            uri: Resource URI. Can be namespaced as "server:uri" for auto-routing.
+                URIs from list_resources() are already namespaced for convenience.
+            server_name: Optional explicit server name. If provided, assumes that
+                there is no namespace in the provided URI.
+            timeout: Maximum seconds to wait. None means wait forever.
+
+        Returns:
+            ReadResourceResult containing the resource content.
+            Returns empty result if client not initialized or timeout occurs.
+
+        Examples:
+            >>> # Auto-routing with namespaced URI (from list_resources())
+            >>> resources = client.list_resources().resources
+            >>> result = client.read_resource(resources[0].uri)
+
+            >>> # Explicit server (no namespace in URI)
+            >>> result = client.read_resource("file:///path", server_name="filesystem")
+
+            >>> # Manual namespacing
+            >>> result = client.read_resource("filesystem:file:///path")
         """
-        logger.debug("Shutting down SyncMultiServerClient...")
-        if self.loop is not None and not self._shutdown:
-            self._shutdown = True
+        if self.loop is None or self.mcp_client is None:
+            return ReadResourceResult(contents=[])
 
-            # Deadlock prevention: if called from event loop thread,
-            # we can't block waiting on the lifecycle future
-            if threading.current_thread() is self.thread:
-                self.loop.call_soon(self.loop.stop)
-                return
+        future = asyncio.run_coroutine_threadsafe(self._read_resource_async(uri, server_name), self.loop)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            logger.error("Read resource timed out after %s seconds", timeout)
+            return ReadResourceResult(contents=[])
 
-            try:
-                # Signal shutdown and wait for lifecycle task to complete
-                # The task will exit the MCP client context properly
-                if self._lifecycle_future is not None:
-                    self._lifecycle_future.result(timeout=10)
-                    logger.debug("MCP client closed successfully")
-            except Exception as e:
-                # Errors expected during interpreter shutdown
-                logger.warning("Error during MCP client shutdown: %s", e)
+    async def _read_resource_async(self, uri: Union[str, AnyUrl], server_name: Optional[str]) -> ReadResourceResult:
+        """Async implementation of read_resource (runs in background loop)."""
+        if self.mcp_client is None:
+            raise ValueError("MCP client not initialized")
+        return await self.mcp_client.read_resource(uri, server_name=server_name)
 
-            try:
-                # Stop event loop
-                self.loop.call_soon_threadsafe(self.loop.stop)
+    def get_prompt(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, str]] = None,
+        server_name: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> GetPromptResult:
+        """Get a prompt by automatically routing to the appropriate server.
 
-                # Wait for thread to finish
-                if self.thread is not None:
-                    self.thread.join(timeout=5)
-            except Exception:
-                # Thread might already be stopped during interpreter shutdown
-                pass
+        Args:
+            name: Name of the prompt to get.
+            arguments: Optional arguments for the prompt.
+            server_name: Optional server name to explicitly specify which server to use.
+                If not provided, the server will be automatically determined from
+                the prompt name.
+            timeout: Maximum seconds to wait. None means wait forever.
 
-    # Context manager support
-    def __enter__(self) -> "SyncMultiServerClient":
-        """Enter context manager."""
-        return self
+        Returns:
+            GetPromptResult containing the prompt messages.
+            Returns empty result if client not initialized or timeout occurs.
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Literal[False]:
-        """Exit context manager and cleanup."""
-        self.shutdown()
-        return False  # Don't suppress exceptions
+        Examples:
+            >>> # Auto-routing (prompt name determines server)
+            >>> result = client.get_prompt("greeting", arguments={"name": "World"})
+
+            >>> # Explicit server
+            >>> result = client.get_prompt("greeting", server_name="prompts_server")
+        """
+        if self.loop is None or self.mcp_client is None:
+            return GetPromptResult(messages=[])
+
+        future = asyncio.run_coroutine_threadsafe(self._get_prompt_async(name, arguments, server_name), self.loop)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            logger.error("Get prompt '%s' timed out after %s seconds", name, timeout)
+            return GetPromptResult(messages=[])
+
+    async def _get_prompt_async(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, str]],
+        server_name: Optional[str],
+    ) -> GetPromptResult:
+        """Async implementation of get_prompt (runs in background loop)."""
+        if self.mcp_client is None:
+            raise ValueError("MCP client not initialized")
+        return await self.mcp_client.get_prompt(name, arguments=arguments, server_name=server_name)
