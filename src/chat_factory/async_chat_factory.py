@@ -20,6 +20,7 @@ from dotenv import (
     find_dotenv,
     load_dotenv,
 )
+from mcp_multi_server.utils import substitute_template_variables
 
 from .async_models import AsyncChatModel
 from .utils.factory_utils import (
@@ -31,7 +32,12 @@ from .utils.factory_utils import (
     convert_tools_to_openai_format,
     sanitize_messages,
 )
-from .utils.mcp_utils import process_tool_result_content
+from .utils.mcp_utils import (
+    convert_mcp_content_to_message,
+    process_tool_result_content,
+    search_prompt,
+    search_resource,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +90,12 @@ class AsyncChatFactory:
         self.mcp_client: Optional[Any] = None
         self.mcp_config_path = mcp_config_path
         self._stack: Optional[AsyncExitStack] = None
+        self._mcp_prompts: Dict[str, Any] = {}
+        self._prompt_names: List[str] = []
+        self._mcp_resources: Dict[str, Any] = {}
+        self._resource_names: List[str] = []
+        self._mcp_resource_templates: Dict[str, Any] = {}
+        self._template_names: List[str] = []
 
         # Register shutdown handler
         atexit.register(lambda: logger.debug("Shutting down AsyncChatFactory..."))
@@ -108,6 +120,17 @@ class AsyncChatFactory:
                 mcp_tools = self.mcp_client.list_tools()
                 mcp_tools_openai = mcp_tools_to_openai_format(mcp_tools.tools)
                 self.openai_tools.extend(mcp_tools_openai)
+
+                # Get MCP prompts, resources and resource templates
+                mcp_prompts = self.mcp_client.list_prompts().prompts
+                self._mcp_prompts = {prompt.name: prompt for prompt in mcp_prompts}
+                self._prompt_names = [prompt.name for prompt in mcp_prompts]
+                mcp_resources = self.mcp_client.list_resources().resources
+                self._mcp_resources = {resource.name: resource for resource in mcp_resources}
+                self._resource_names = [resource.name for resource in mcp_resources]
+                mcp_resource_templates = self.mcp_client.list_resource_templates().resourceTemplates
+                self._mcp_resource_templates = {template.name: template for template in mcp_resource_templates}
+                self._template_names = [template.name for template in mcp_resource_templates]
 
             except ImportError as e:
                 logger.error("MCP Multi-Server package is not installed: %s. Run: pip install mcp-multi-server", e)
@@ -134,6 +157,48 @@ class AsyncChatFactory:
         """Disconnect from MCP servers."""
         await self.__aexit__(None, None, None)
 
+    @property
+    def mcp_prompts(self) -> Dict[str, Any]:
+        """Get MCP prompts if MCP client is initialized."""
+        if self.mcp_client:
+            return self._mcp_prompts
+        return {}
+
+    @property
+    def prompt_names(self) -> List[str]:
+        """Get MCP prompt names if MCP client is initialized."""
+        if self.mcp_client:
+            return self._prompt_names
+        return []
+
+    @property
+    def mcp_resources(self) -> Dict[str, Any]:
+        """Get MCP resources if MCP client is initialized."""
+        if self.mcp_client:
+            return self._mcp_resources
+        return {}
+
+    @property
+    def resource_names(self) -> List[str]:
+        """Get MCP resource names if MCP client is initialized."""
+        if self.mcp_client:
+            return self._resource_names
+        return []
+
+    @property
+    def mcp_resource_templates(self) -> Dict[str, Any]:
+        """Get MCP resource templates if MCP client is initialized."""
+        if self.mcp_client:
+            return self._mcp_resource_templates
+        return {}
+
+    @property
+    def template_names(self) -> List[str]:
+        """Get MCP resource template names if MCP client is initialized."""
+        if self.mcp_client:
+            return self._template_names
+        return []
+
     async def set_mcp_logging_level(self, level: str) -> None:
         """Set the logging level the MCP connected servers.
 
@@ -149,6 +214,60 @@ class AsyncChatFactory:
                 logger.info("MCP logging level set to %s", log_level)
             except Exception as e:
                 logger.warning("Error setting MCP logging level to %s: %s", log_level, e)
+
+    async def instantiate_prompt(self, prompt_name: str, get_prompt_arguments: Callable) -> List[Dict[str, Any]]:
+        """Retrieve a MCP prompt by name and convert to OpenAI message format.
+        Args:
+            prompt_name: Name of the MCP prompt to retrieve.
+            get_prompt_arguments: Function to get prompt arguments through UI.
+
+        Returns:
+            List of OpenAI-formatted messages with proper image/audio support.
+        """
+
+        if not self.mcp_client:
+            return []
+        prompt, prompt_arguments = search_prompt(self._mcp_prompts, prompt_name)
+        if not prompt:
+            return []
+        arguments = get_prompt_arguments(prompt_arguments)
+
+        prompt_result = await self.mcp_client.get_prompt(prompt_name, arguments=arguments)
+
+        openai_messages = []
+        for msg in prompt_result.messages:
+            content = convert_mcp_content_to_message(msg.content)
+            openai_messages.append({"role": msg.role, "content": content})
+
+        return openai_messages
+
+    async def instantiate_resource(self, resource_name: str, get_template_variables: Callable) -> List[Dict[str, Any]]:
+        """Retrieve a resource by name from the list of resources.
+        Args:
+            resource_name: Name of the resource to retrieve.
+            get_template_variables: Function to get template variable values through UI.
+            is_template: Whether the resource is a template.
+        Returns:
+            List of OpenAI-formatted messages with resource content.
+        """
+        if not self.mcp_client:
+            return []
+        resource, uri, variables = search_resource(self._mcp_resources, resource_name)
+        if not resource:
+            return []
+        if variables:
+            var_values = get_template_variables(variables)
+            uri = substitute_template_variables(uri, var_values)  # type: ignore
+
+        resource_result = await self.mcp_client.read_resource(uri=uri)
+
+        # Assuming single text message resource
+        resource_result_text = (
+            resource_result.contents[0].text  # type: ignore
+            if resource_result.contents and hasattr(resource_result.contents[0], "text")
+            else ""
+        )
+        return [{"role": "user", "content": resource_result_text}]
 
     async def evaluate(
         self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]
