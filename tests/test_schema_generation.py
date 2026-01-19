@@ -8,7 +8,7 @@ from chat_factory import (
     _map_python_type_to_json_schema,
     _parse_google_docstring,
 )
-from chat_factory.utils.factory_utils import convert_tools_to_openai_format
+from chat_factory.utils.factory import convert_tools_to_openai_format
 
 # Capture warnings
 warnings.simplefilter("always")

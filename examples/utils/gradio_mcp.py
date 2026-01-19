@@ -18,11 +18,11 @@ from chat_factory import (
     AsyncChatFactory,
     ChatFactory,
 )
-from chat_factory.utils.mcp_utils import (
+from chat_factory.utils.mcp import (
     search_prompt,
     search_resource,
 )
-from utils.media_handler import (
+from examples.utils.media_handler import (
     get_audio,
     get_image,
 )

@@ -1,7 +1,7 @@
 """Test error handling in schema generation."""
 import sys
 
-from chat_factory.utils.factory_utils import convert_tools_to_openai_format
+from chat_factory.utils.factory import convert_tools_to_openai_format
 
 
 def valid_func(x: int):

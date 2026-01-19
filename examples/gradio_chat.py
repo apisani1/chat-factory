@@ -6,8 +6,9 @@ from chat_factory import (
     ChatFactory,
     ChatModel,
 )
-from chat_factory.utils.factory_utils import configure_logging
-from utils.gradio_mcp_helpers import (
+from chat_factory.utils.factory import configure_logging
+from pypdf import PdfReader
+from examples.utils.gradio_mcp import (
     MCPHandler,
     convert_gradio_messages_to_openai,
     create_mcp_input_components,
@@ -15,13 +16,34 @@ from utils.gradio_mcp_helpers import (
 from utils.tools import tools
 
 
-system_message = """
-You are given a problem to solve, by using your todo tools to plan a list of steps, then carrying out each step in turn.
-Now use the todo list tools, create a plan, carry out the steps, and reply with the solution.
-If any quantity isn't provided in the question, then include a step to come up with a reasonable estimate.
-Provide your solution in Markdown markup without code blocks.
-Do not ask the user questions or clarification; respond only with the answer after using your tools.
-"""
+reader = PdfReader("me/linkedin.pdf")
+linkedin = ""
+for page in reader.pages:
+    text = page.extract_text()
+    if text:
+        linkedin += text
+
+with open("me/summary.txt", "r", encoding="utf-8") as f:
+    summary = f.read()
+
+name = "Ed Donner"
+
+ED_GENERATOR_PROMPT = f"""You are acting as {name}. You are answering questions on {name}'s website,
+particularly questions related to {name}'s career, background, skills and experience.
+Your responsibility is to represent {name} for interactions on the website as faithfully as possible.
+You are given a summary of {name}'s background and LinkedIn profile which you can use to answer questions.
+Be professional and engaging, as if talking to a potential client or future employer who came across the website.
+If you don't know the answer, say so.
+## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n
+With this context, please chat with the user, always staying in character as {name}."""
+
+ED_EVALUATOR_PROMPT = f"""You are an evaluator that decides whether a response to a question is acceptable.
+You are provided with a conversation between a User and an Agent. Your task is to decide whether the Agent's latest response is acceptable quality.
+The Agent is playing the role of {name} and is representing {name} on their website.
+The Agent has been instructed to be professional and engaging, as if talking to a potential client or future employer who came across the website.
+The Agent has been provided with context on {name} in the form of their summary and LinkedIn details. Here's the information:"
+## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n"
+With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
 
 def shutdown() -> str:
@@ -34,8 +56,8 @@ def shutdown() -> str:
 
 
 def main() -> None:
-    openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
-    # anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
+    openai_model = ChatModel(model_name="gpt-5-mini", provider="openai")
+    anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
     # google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
     # deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
     # groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
@@ -46,15 +68,15 @@ def main() -> None:
 
     chat_factory = ChatFactory(
         generator_model=openai_model,
-        system_prompt=system_message,
+        system_prompt=ED_GENERATOR_PROMPT,
+        evaluator_model=anthropic_model,
+        evaluator_system_prompt=ED_EVALUATOR_PROMPT,
         tools=tools,
-        generator_kwargs={"reasoning_effort": "none"},
-        mcp_config_path="utils/mcp_config.json",
+        mcp_config_path="mcp_config.json",
     )
     chat_factory.set_mcp_logging_level(level="CRITICAL")
 
     # Shared state for OpenAI-format history (synchronized with MCP injections)
-    # This is a mutable container so closures can update it
     synced_state: Dict[str, List[Dict[str, Any]]] = {"openai_history": []}
 
     def chat_with_synced_history(message: str, history: list) -> str:
@@ -145,7 +167,6 @@ def main() -> None:
             prompt_name: str, current_history: List[Dict[str, Any]], current_openai_history: List[Dict[str, Any]]
         ) -> Tuple[Any, ...]:
             result = handler.on_prompt_selected(prompt_name, current_history, current_openai_history)
-            # The last element is the new OpenAI history - sync it to shared state
             synced_state["openai_history"] = result[-1]
             return result
 

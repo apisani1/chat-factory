@@ -5,7 +5,7 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
         "python3",
         "-m",
         "todo_server"
@@ -16,7 +16,7 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
         "python3",
         "-m",
         "tool_server"
@@ -27,7 +27,7 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
         "python3",
         "-m",
         "prompt_server"
@@ -38,7 +38,7 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/utils/",
+        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
         "python3",
         "-m",
         "resource_server"

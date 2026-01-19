@@ -23,7 +23,7 @@ from dotenv import (
 from mcp_multi_server.utils import substitute_template_variables
 
 from .async_models import AsyncChatModel
-from .utils.factory_utils import (
+from .utils.factory import (
     EVALUATOR_PROMPT,
     GENERATOR_PROMPT,
     Evaluation,
@@ -32,7 +32,7 @@ from .utils.factory_utils import (
     convert_tools_to_openai_format,
     sanitize_messages,
 )
-from .utils.mcp_utils import (
+from .utils.mcp import (
     convert_mcp_content_to_message,
     process_tool_result_content,
     search_prompt,

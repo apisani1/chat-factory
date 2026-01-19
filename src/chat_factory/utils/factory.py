@@ -13,7 +13,7 @@ from typing import (
 
 from pydantic import BaseModel
 
-from .schema_utils import extract_function_schema
+from .schema import extract_function_schema
 
 
 class Evaluation(BaseModel):

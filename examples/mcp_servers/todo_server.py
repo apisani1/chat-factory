@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from chat_factory.utils.factory_utils import configure_logging
+from chat_factory.utils.factory import configure_logging
 from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
