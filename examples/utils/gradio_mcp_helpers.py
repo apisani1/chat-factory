@@ -2,6 +2,8 @@
 
 import base64
 import logging
+import mimetypes
+import os
 import tempfile
 from typing import (
     Any,
@@ -19,6 +21,10 @@ from chat_factory import (
 from chat_factory.utils.mcp_utils import (
     search_prompt,
     search_resource,
+)
+from utils.media_handler import (
+    get_audio,
+    get_image,
 )
 
 
@@ -44,9 +50,109 @@ def _save_base64_to_temp_file(b64_data: str, extension: str) -> str:
         return tmp.name
 
 
-def convert_openai_content_to_gradio(
-    content: Union[str, List[Dict[str, Any]]]
-) -> Union[str, List[Any]]:
+def convert_gradio_content_to_openai(content: Union[str, List[Dict[str, Any]]]) -> Union[str, List[Dict[str, Any]]]:
+    """Convert Gradio-format content to OpenAI-format content.
+
+    Gradio uses: {"type": "file", "file": {"path": "/path/to/image.png"}}
+    OpenAI uses: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+
+    File paths are read and converted to base64 data URLs for images,
+    or input_audio format for audio files.
+
+    Args:
+        content: Gradio-format content (string or list of content blocks).
+
+    Returns:
+        OpenAI-format content.
+    """
+    if isinstance(content, str):
+        return content
+
+    if not isinstance(content, list):
+        return content
+
+    openai_content: List[Dict[str, Any]] = []
+    for item in content:
+        if not isinstance(item, dict):
+            openai_content.append(item)
+            continue
+
+        item_type = item.get("type")
+
+        if item_type == "text":
+            openai_content.append({"type": "text", "text": item.get("text", "")})
+
+        elif item_type == "file":
+            file_info = item.get("file", {})
+            file_path = file_info.get("path", "") if isinstance(file_info, dict) else ""
+
+            if not file_path or not os.path.exists(file_path):
+                logger.warning("File not found: %s", file_path)
+                openai_content.append({"type": "text", "text": f"[File not found: {file_path}]"})
+                continue
+
+            # Determine MIME type from file extension
+            mime_type, _ = mimetypes.guess_type(file_path)
+
+            if mime_type and mime_type.startswith("image/"):
+                try:
+                    b64_data, actual_mime = get_image(file_path)
+                    data_url = f"data:{actual_mime};base64,{b64_data}"
+                    openai_content.append({"type": "image_url", "image_url": {"url": data_url}})
+                except Exception as e:
+                    logger.warning("Failed to convert image %s: %s", file_path, e)
+                    openai_content.append({"type": "text", "text": f"[Image could not be processed: {file_path}]"})
+
+            elif mime_type and mime_type.startswith("audio/"):
+                try:
+                    b64_data, _ = get_audio(file_path)
+                    # Extract format from extension
+                    _, ext = os.path.splitext(file_path.lower())
+                    audio_format = ext.lstrip(".") or "wav"
+                    openai_content.append(
+                        {"type": "input_audio", "input_audio": {"data": b64_data, "format": audio_format}}
+                    )
+                except Exception as e:
+                    logger.warning("Failed to convert audio %s: %s", file_path, e)
+                    openai_content.append({"type": "text", "text": f"[Audio could not be processed: {file_path}]"})
+
+            else:
+                # Unknown file type - try as image first, fall back to text
+                try:
+                    b64_data, actual_mime = get_image(file_path)
+                    data_url = f"data:{actual_mime};base64,{b64_data}"
+                    openai_content.append({"type": "image_url", "image_url": {"url": data_url}})
+                except Exception:
+                    logger.warning("Unknown file type, could not process: %s", file_path)
+                    openai_content.append({"type": "text", "text": f"[File could not be processed: {file_path}]"})
+
+        else:
+            # Pass through unknown types
+            openai_content.append(item)
+
+    return openai_content
+
+
+def convert_gradio_messages_to_openai(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Convert a list of Gradio-format messages to OpenAI-format messages.
+
+    Args:
+        messages: List of Gradio-format messages.
+
+    Returns:
+        List of OpenAI-format messages.
+    """
+    openai_messages = []
+    for msg in messages:
+        openai_msg = {"role": msg.get("role", "user")}
+        content = msg.get("content")
+        if content is not None:
+            openai_msg["content"] = convert_gradio_content_to_openai(content)
+        openai_messages.append(openai_msg)
+    return openai_messages
+
+
+def convert_openai_content_to_gradio(content: Union[str, List[Dict[str, Any]]]) -> Union[str, List[Any]]:
     """Convert OpenAI-format content to Gradio-format content.
 
     OpenAI uses: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
@@ -120,9 +226,7 @@ def convert_openai_content_to_gradio(
     return gradio_content
 
 
-def convert_openai_messages_to_gradio(
-    messages: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
+def convert_openai_messages_to_gradio(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert a list of OpenAI-format messages to Gradio-format messages.
 
     Args:
@@ -322,30 +426,32 @@ def collect_variables_from_inputs(variables: List[str], input_values: List[str])
 # All helpers now include chatbot history as the last element of the returned tuple
 
 
-def _empty_prompt_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
+def _empty_prompt_response(history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for invalid/unavailable prompt selection."""
     return (
         {"name": None, "arguments": []},
         gr.update(visible=False),
         gr.update(visible=False),
         *hide_all_inputs(),
-        history,  # Return history unchanged
+        history,  # Return chatbot history unchanged
+        openai_history,  # Return OpenAI history unchanged
     )
 
 
-def _empty_resource_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
+def _empty_resource_response(history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for invalid/unavailable resource selection."""
     return (
         {"name": None, "uri": None, "variables": []},
         gr.update(visible=False),
         gr.update(visible=False),
         *hide_all_inputs(),
-        history,  # Return history unchanged
+        history,  # Return chatbot history unchanged
+        openai_history,  # Return OpenAI history unchanged
     )
 
 
 def _prompt_content_response(
-    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]
 ) -> Tuple[Any, ...]:
     """Build response showing prompt content and injecting messages into chat history."""
     content = format_messages_for_display(messages) if messages else "No content"
@@ -355,12 +461,13 @@ def _prompt_content_response(
         gr.update(visible=True, value=content),
         gr.update(visible=False),
         *hide_all_inputs(),
-        history + gradio_messages,  # Inject messages into chatbot
+        history + gradio_messages,  # Inject messages into chatbot (Gradio format)
+        openai_history + messages,  # Inject messages into state (OpenAI format)
     )
 
 
 def _resource_content_response(
-    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]
 ) -> Tuple[Any, ...]:
     """Build response showing resource content and injecting messages into chat history."""
     content = format_messages_for_display(messages) if messages else "No content"
@@ -370,12 +477,16 @@ def _resource_content_response(
         gr.update(visible=True, value=content),
         gr.update(visible=False),
         *hide_all_inputs(),
-        history + gradio_messages,  # Inject messages into chatbot
+        history + gradio_messages,  # Inject messages into chatbot (Gradio format)
+        openai_history + messages,  # Inject messages into state (OpenAI format)
     )
 
 
 def _prompt_input_response(
-    prompt_name: str, prompt_arguments: List[Any], history: List[Dict[str, Any]]
+    prompt_name: str,
+    prompt_arguments: List[Any],
+    history: List[Dict[str, Any]],
+    openai_history: List[Dict[str, Any]],
 ) -> Tuple[Any, ...]:
     """Build response showing input fields for prompt arguments."""
     return (
@@ -383,12 +494,17 @@ def _prompt_input_response(
         gr.update(visible=False),
         gr.update(visible=True),
         *build_prompt_input_updates(list(prompt_arguments)),
-        history,  # Return history unchanged (waiting for submit)
+        history,  # Return chatbot history unchanged (waiting for submit)
+        openai_history,  # Return OpenAI history unchanged
     )
 
 
 def _resource_input_response(
-    resource_name: str, uri: str, variables: List[str], history: List[Dict[str, Any]]
+    resource_name: str,
+    uri: str,
+    variables: List[str],
+    history: List[Dict[str, Any]],
+    openai_history: List[Dict[str, Any]],
 ) -> Tuple[Any, ...]:
     """Build response showing input fields for resource variables."""
     return (
@@ -396,21 +512,23 @@ def _resource_input_response(
         gr.update(visible=False),
         gr.update(visible=True),
         *build_resource_input_updates(variables),
-        history,  # Return history unchanged (waiting for submit)
+        history,  # Return chatbot history unchanged (waiting for submit)
+        openai_history,  # Return OpenAI history unchanged
     )
 
 
-def _submit_empty_response(history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
+def _submit_empty_response(history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Build response for empty submit (no name in state)."""
     return (
         gr.update(visible=False),
         gr.update(visible=False),
-        history,  # Return history unchanged
+        history,  # Return chatbot history unchanged
+        openai_history,  # Return OpenAI history unchanged
     )
 
 
 def _submit_content_response(
-    messages: List[Dict[str, Any]], history: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]], history: List[Dict[str, Any]], openai_history: List[Dict[str, Any]]
 ) -> Tuple[Any, ...]:
     """Build response showing submitted content and injecting messages into chat history."""
     content = format_messages_for_display(messages) if messages else "No content"
@@ -418,7 +536,8 @@ def _submit_content_response(
     return (
         gr.update(visible=True, value=content),
         gr.update(visible=False),
-        history + gradio_messages,  # Inject messages into chatbot
+        history + gradio_messages,  # Inject messages into chatbot (Gradio format)
+        openai_history + messages,  # Inject messages into state (OpenAI format)
     )
 
 
@@ -434,94 +553,112 @@ class MCPHandler:
         self.chat_factory = chat_factory
 
     def on_prompt_selected(
-        self, prompt_name: str, current_history: List[Dict[str, Any]]
+        self,
+        prompt_name: str,
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
     ) -> Tuple[Any, ...]:
         """Handle prompt selection - show content directly or show input fields.
 
         Args:
             prompt_name: Name of the selected prompt.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not prompt_name or prompt_name == "No prompts available":
-            return _empty_prompt_response(current_history)
+            return _empty_prompt_response(current_history, current_openai_history)
 
         prompt, prompt_arguments = search_prompt(self.chat_factory.mcp_prompts, prompt_name)
         if not prompt:
-            return _empty_prompt_response(current_history)
+            return _empty_prompt_response(current_history, current_openai_history)
 
         if not prompt_arguments:
             messages = self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
-            return _prompt_content_response(messages or [], current_history)
+            return _prompt_content_response(messages or [], current_history, current_openai_history)
 
-        return _prompt_input_response(prompt_name, prompt_arguments, current_history)
+        return _prompt_input_response(prompt_name, prompt_arguments, current_history, current_openai_history)
 
     def on_prompt_submit(
-        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        self,
+        state: Dict[str, Any],
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
+        *input_values: str,
     ) -> Tuple[Any, ...]:
         """Handle prompt submit - collect values and instantiate prompt.
 
         Args:
             state: Current prompt state with name and arguments.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
             *input_values: Values from input textboxes.
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not state.get("name"):
-            return _submit_empty_response(current_history)
+            return _submit_empty_response(current_history, current_openai_history)
 
         arguments = collect_arguments_from_inputs(state["arguments"], list(input_values))
         messages = self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
-        return _submit_content_response(messages or [], current_history)
+        return _submit_content_response(messages or [], current_history, current_openai_history)
 
     def on_resource_selected(
-        self, resource_name: str, current_history: List[Dict[str, Any]]
+        self,
+        resource_name: str,
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
     ) -> Tuple[Any, ...]:
         """Handle resource selection - show content directly or show input fields.
 
         Args:
             resource_name: Name of the selected resource.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not resource_name or resource_name == "No resources available":
-            return _empty_resource_response(current_history)
+            return _empty_resource_response(current_history, current_openai_history)
 
         resource, uri, variables = search_resource(self.chat_factory.mcp_resources, resource_name)
         if not resource:
-            return _empty_resource_response(current_history)
+            return _empty_resource_response(current_history, current_openai_history)
 
         if not variables:
             messages = self.chat_factory.instantiate_resource(resource_name, lambda _: {})
-            return _resource_content_response(messages or [], current_history)
+            return _resource_content_response(messages or [], current_history, current_openai_history)
 
-        return _resource_input_response(resource_name, uri, variables, current_history)  # type: ignore
+        return _resource_input_response(resource_name, uri, variables, current_history, current_openai_history)  # type: ignore
 
     def on_resource_submit(
-        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        self,
+        state: Dict[str, Any],
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
+        *input_values: str,
     ) -> Tuple[Any, ...]:
         """Handle resource submit - collect values and instantiate resource.
 
         Args:
             state: Current resource state with name, uri, and variables.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
             *input_values: Values from input textboxes.
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not state.get("name"):
-            return _submit_empty_response(current_history)
+            return _submit_empty_response(current_history, current_openai_history)
 
         variables = collect_variables_from_inputs(state["variables"], list(input_values))
         messages = self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
-        return _submit_content_response(messages or [], current_history)
+        return _submit_content_response(messages or [], current_history, current_openai_history)
 
 
 class AsyncMCPHandler:
@@ -536,91 +673,109 @@ class AsyncMCPHandler:
         self.chat_factory = chat_factory
 
     async def on_prompt_selected(
-        self, prompt_name: str, current_history: List[Dict[str, Any]]
+        self,
+        prompt_name: str,
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
     ) -> Tuple[Any, ...]:
         """Handle prompt selection - show content directly or show input fields.
 
         Args:
             prompt_name: Name of the selected prompt.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not prompt_name or prompt_name == "No prompts available":
-            return _empty_prompt_response(current_history)
+            return _empty_prompt_response(current_history, current_openai_history)
 
         prompt, prompt_arguments = search_prompt(self.chat_factory.mcp_prompts, prompt_name)
         if not prompt:
-            return _empty_prompt_response(current_history)
+            return _empty_prompt_response(current_history, current_openai_history)
 
         if not prompt_arguments:
             messages = await self.chat_factory.instantiate_prompt(prompt_name, lambda _: {})
-            return _prompt_content_response(messages or [], current_history)
+            return _prompt_content_response(messages or [], current_history, current_openai_history)
 
-        return _prompt_input_response(prompt_name, prompt_arguments, current_history)
+        return _prompt_input_response(prompt_name, prompt_arguments, current_history, current_openai_history)
 
     async def on_prompt_submit(
-        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        self,
+        state: Dict[str, Any],
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
+        *input_values: str,
     ) -> Tuple[Any, ...]:
         """Handle prompt submit - collect values and instantiate prompt.
 
         Args:
             state: Current prompt state with name and arguments.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
             *input_values: Values from input textboxes.
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not state.get("name"):
-            return _submit_empty_response(current_history)
+            return _submit_empty_response(current_history, current_openai_history)
 
         arguments = collect_arguments_from_inputs(state["arguments"], list(input_values))
         messages = await self.chat_factory.instantiate_prompt(state["name"], lambda _: arguments)
-        return _submit_content_response(messages or [], current_history)
+        return _submit_content_response(messages or [], current_history, current_openai_history)
 
     async def on_resource_selected(
-        self, resource_name: str, current_history: List[Dict[str, Any]]
+        self,
+        resource_name: str,
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
     ) -> Tuple[Any, ...]:
         """Handle resource selection - show content directly or show input fields.
 
         Args:
             resource_name: Name of the selected resource.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not resource_name or resource_name == "No resources available":
-            return _empty_resource_response(current_history)
+            return _empty_resource_response(current_history, current_openai_history)
 
         resource, uri, variables = search_resource(self.chat_factory.mcp_resources, resource_name)
         if not resource:
-            return _empty_resource_response(current_history)
+            return _empty_resource_response(current_history, current_openai_history)
 
         if not variables:
             messages = await self.chat_factory.instantiate_resource(resource_name, lambda _: {})
-            return _resource_content_response(messages or [], current_history)
+            return _resource_content_response(messages or [], current_history, current_openai_history)
 
-        return _resource_input_response(resource_name, uri, variables, current_history)  # type: ignore
+        return _resource_input_response(resource_name, uri, variables, current_history, current_openai_history)  # type: ignore
 
     async def on_resource_submit(
-        self, state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+        self,
+        state: Dict[str, Any],
+        current_history: List[Dict[str, Any]],
+        current_openai_history: List[Dict[str, Any]],
+        *input_values: str,
     ) -> Tuple[Any, ...]:
         """Handle resource submit - collect values and instantiate resource.
 
         Args:
             state: Current resource state with name, uri, and variables.
-            current_history: Current chatbot history.
+            current_history: Current chatbot history (Gradio format).
+            current_openai_history: Current OpenAI-format history (from gr.State).
             *input_values: Values from input textboxes.
 
         Returns:
-            Tuple of updates including updated chatbot history.
+            Tuple of updates including updated chatbot and OpenAI histories.
         """
         if not state.get("name"):
-            return _submit_empty_response(current_history)
+            return _submit_empty_response(current_history, current_openai_history)
 
         variables = collect_variables_from_inputs(state["variables"], list(input_values))
         messages = await self.chat_factory.instantiate_resource(state["name"], lambda _: variables)
-        return _submit_content_response(messages or [], current_history)
+        return _submit_content_response(messages or [], current_history, current_openai_history)

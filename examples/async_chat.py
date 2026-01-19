@@ -15,6 +15,7 @@ from chat_factory.utils.factory_utils import configure_logging
 from pypdf import PdfReader
 from utils.gradio_mcp_helpers import (
     AsyncMCPHandler,
+    convert_gradio_messages_to_openai,
     create_mcp_input_components,
 )
 from utils.tools import tools
@@ -55,6 +56,9 @@ handler: Optional[AsyncMCPHandler] = None
 demo: Optional[gr.Blocks] = None
 prompt_names: List[str] = []
 resource_names: List[str] = []
+
+# Shared state for OpenAI-format history (synchronized with MCP injections)
+synced_state: Dict[str, List[Dict[str, Any]]] = {"openai_history": []}
 
 openai_model = AsyncChatModel(model_name="gpt-5.2", provider="openai")
 anthropic_model = AsyncChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
@@ -107,9 +111,18 @@ async def shutdown() -> str:
 
 
 async def chat(message: str, history: List[Dict[str, Any]]) -> str:
+    """Chat using synchronized OpenAI-format history that includes MCP injections."""
     # Wait until init_chat_factory has run
     # (Gradio guarantees demo.load runs before first call)
-    return await chat_fn(message, history)  # type: ignore
+    # Use the synced OpenAI history instead of ChatInterface's history
+    openai_history = convert_gradio_messages_to_openai(synced_state["openai_history"])
+    response = await chat_fn(message, openai_history)  # type: ignore
+    # Update synced history with new exchange
+    synced_state["openai_history"] = synced_state["openai_history"] + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": response},
+    ]
+    return response
 
 
 def main() -> None:
@@ -122,6 +135,9 @@ def main() -> None:
         # Create explicit chatbot for MCP message injection
         chatbot = gr.Chatbot(label="Chat")
         gr.ChatInterface(fn=chat, chatbot=chatbot)
+
+        # State to track OpenAI-format history (for Gradio event system)
+        history_state: gr.State = gr.State(value=[])
 
         # State to track current prompt/resource selection
         current_prompt_state: gr.State = gr.State(value={"name": None, "arguments": []})
@@ -159,7 +175,7 @@ def main() -> None:
             )
             exit_btn = gr.Button("Exit", variant="stop", scale=0)
 
-        # Build output lists for event handlers (chatbot is last element)
+        # Build output lists for event handlers (chatbot and history_state at end)
         prompt_outputs = [
             current_prompt_state,
             mcp_content_display,
@@ -168,6 +184,7 @@ def main() -> None:
             *prompt_inputs,
             prompt_submit_btn,
             chatbot,
+            history_state,
         ]
         resource_outputs = [
             current_resource_state,
@@ -177,57 +194,74 @@ def main() -> None:
             *resource_inputs,
             resource_submit_btn,
             chatbot,
+            history_state,
         ]
 
-        # Wrapper functions to delegate to handler (initialized lazily)
+        # Wrapper functions to delegate to handler and sync state (initialized lazily)
         async def on_prompt_selected(
-            prompt_name: str, current_history: List[Dict[str, Any]]
+            prompt_name: str, current_history: List[Dict[str, Any]], current_openai_history: List[Dict[str, Any]]
         ) -> Any:
             if handler:
-                return await handler.on_prompt_selected(prompt_name, current_history)
+                result = await handler.on_prompt_selected(prompt_name, current_history, current_openai_history)
+                synced_state["openai_history"] = result[-1]
+                return result
             return None
 
         async def on_prompt_submit(
-            state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+            state: Dict[str, Any],
+            current_history: List[Dict[str, Any]],
+            current_openai_history: List[Dict[str, Any]],
+            *input_values: str,
         ) -> Any:
             if handler:
-                return await handler.on_prompt_submit(state, current_history, *input_values)
+                result = await handler.on_prompt_submit(state, current_history, current_openai_history, *input_values)
+                synced_state["openai_history"] = result[-1]
+                return result
             return None
 
         async def on_resource_selected(
-            resource_name: str, current_history: List[Dict[str, Any]]
+            resource_name: str, current_history: List[Dict[str, Any]], current_openai_history: List[Dict[str, Any]]
         ) -> Any:
             if handler:
-                return await handler.on_resource_selected(resource_name, current_history)
+                result = await handler.on_resource_selected(resource_name, current_history, current_openai_history)
+                synced_state["openai_history"] = result[-1]
+                return result
             return None
 
         async def on_resource_submit(
-            state: Dict[str, Any], current_history: List[Dict[str, Any]], *input_values: str
+            state: Dict[str, Any],
+            current_history: List[Dict[str, Any]],
+            current_openai_history: List[Dict[str, Any]],
+            *input_values: str,
         ) -> Any:
             if handler:
-                return await handler.on_resource_submit(state, current_history, *input_values)
+                result = await handler.on_resource_submit(
+                    state, current_history, current_openai_history, *input_values
+                )
+                synced_state["openai_history"] = result[-1]
+                return result
             return None
 
-        # Connect event handlers (chatbot included in inputs and outputs)
+        # Connect event handlers (chatbot and history_state in inputs and outputs)
         prompts_dropdown.change(
             fn=on_prompt_selected,
-            inputs=[prompts_dropdown, chatbot],
+            inputs=[prompts_dropdown, chatbot, history_state],
             outputs=prompt_outputs,
         )
         resources_dropdown.change(
             fn=on_resource_selected,
-            inputs=[resources_dropdown, chatbot],
+            inputs=[resources_dropdown, chatbot, history_state],
             outputs=resource_outputs,
         )
         prompt_submit_btn.click(
             fn=on_prompt_submit,
-            inputs=[current_prompt_state, chatbot, *prompt_inputs],
-            outputs=[mcp_content_display, prompt_input_group, chatbot],
+            inputs=[current_prompt_state, chatbot, history_state, *prompt_inputs],
+            outputs=[mcp_content_display, prompt_input_group, chatbot, history_state],
         )
         resource_submit_btn.click(
             fn=on_resource_submit,
-            inputs=[current_resource_state, chatbot, *resource_inputs],
-            outputs=[mcp_content_display, resource_input_group, chatbot],
+            inputs=[current_resource_state, chatbot, history_state, *resource_inputs],
+            outputs=[mcp_content_display, resource_input_group, chatbot, history_state],
         )
         exit_btn.click(fn=shutdown, outputs=gr.Textbox(visible=False))
 

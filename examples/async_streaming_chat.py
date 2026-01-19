@@ -14,6 +14,7 @@ from chat_factory import (
     AsyncChatModel,
 )
 from chat_factory.utils.factory_utils import configure_logging
+from utils.gradio_mcp_helpers import convert_gradio_messages_to_openai
 
 
 system_message = """You are a helpful AI assistant.
@@ -53,9 +54,11 @@ async def shutdown() -> str:
 
 
 async def chat(message: str, history: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    """Wrapper that converts Gradio multimodal history to OpenAI format."""
     # Wait until init_chat_factory has run
     # (Gradio guarantees demo.load runs before first call)
-    async for chunk in chat_fn(message, history):  # type: ignore
+    openai_history = convert_gradio_messages_to_openai(history)
+    async for chunk in chat_fn(message, openai_history):  # type: ignore
         yield chunk
 
 

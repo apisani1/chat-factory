@@ -1,12 +1,13 @@
 import os
+from typing import Generator
 
 import gradio as gr
-
 from chat_factory import (
     ChatFactory,
     ChatModel,
 )
 from chat_factory.utils.factory_utils import configure_logging
+from utils.gradio_mcp_helpers import convert_gradio_messages_to_openai
 
 
 system_message = """You are a helpful AI assistant.
@@ -36,15 +37,19 @@ def main() -> None:
     # Do here any necessary setup before starting Gradio interface
     configure_logging(level="WARNING")
 
-    # Create ChatFactory and get streaming chat function
-    chat = ChatFactory(
+    # Create ChatFactory
+    chat_factory = ChatFactory(
         generator_model=openai_model,
         system_prompt=system_message,
+    )
 
-    ).get_gradio_stream_chat()
+    def stream_chat_with_multimodal(message: str, history: list) -> Generator[str, None, None]:
+        """Wrapper that converts Gradio multimodal history to OpenAI format."""
+        openai_history = convert_gradio_messages_to_openai(history)
+        yield from chat_factory.stream_chat(message, openai_history)
 
     with gr.Blocks() as demo:
-        gr.ChatInterface(fn=chat)
+        gr.ChatInterface(fn=stream_chat_with_multimodal)
 
         with gr.Row():
             exit_btn = gr.Button("Exit", variant="stop", scale=0)
