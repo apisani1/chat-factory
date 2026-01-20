@@ -5,10 +5,10 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
+        "/Users/antonio/AI/MyCode/chat-factory/",
         "python3",
         "-m",
-        "todo_server"
+        "examples.mcp_servers.todo_server"
       ]
     },
     "tool_server": {
@@ -16,10 +16,10 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
+        "/Users/antonio/AI/MyCode/chat-factory/",
         "python3",
         "-m",
-        "tool_server"
+        "examples.mcp_servers.tool_server"
       ]
     },
     "prompt_server": {
@@ -27,10 +27,10 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
+        "/Users/antonio/AI/MyCode/chat-factory/",
         "python3",
         "-m",
-        "prompt_server"
+        "examples.mcp_servers.prompt_server"
       ]
     },
     "resource_server": {
@@ -38,10 +38,10 @@
       "args": [
         "run",
         "--directory",
-        "/Users/antonio/AI/MyCode/chat-factory/examples/mcp_servers/",
+        "/Users/antonio/AI/MyCode/chat-factory/",
         "python3",
         "-m",
-        "resource_server"
+        "examples.mcp_servers.resource_server"
       ]
     }
   }

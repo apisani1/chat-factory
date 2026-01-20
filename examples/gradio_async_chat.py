@@ -13,7 +13,7 @@ from chat_factory import (
 )
 from chat_factory.utils.factory import configure_logging
 from pypdf import PdfReader
-from examples.utils.gradio_mcp import (
+from utils.gradio_mcp import (
     AsyncMCPHandler,
     convert_gradio_messages_to_openai,
     create_mcp_input_components,
@@ -81,7 +81,7 @@ async def init_chat_factory() -> tuple:
     )
     await chat_factory.connect_to_mcp_servers()
     await chat_factory.set_mcp_logging_level(level="CRITICAL")
-    chat_fn = chat_factory.get_async_gradio_chat()
+    chat_fn = chat_factory.get_async_chat()
 
     # Create handler after factory is ready
     handler = AsyncMCPHandler(
@@ -129,7 +129,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
-    configure_logging(level="WARNING")
+    configure_logging(level="INFO")
 
     with gr.Blocks() as demo:
         # Create explicit chatbot for MCP message injection

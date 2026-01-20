@@ -8,7 +8,7 @@ from chat_factory import (
 )
 from chat_factory.utils.factory import configure_logging
 from pypdf import PdfReader
-from examples.utils.gradio_mcp import (
+from utils.gradio_mcp import (
     MCPHandler,
     convert_gradio_messages_to_openai,
     create_mcp_input_components,

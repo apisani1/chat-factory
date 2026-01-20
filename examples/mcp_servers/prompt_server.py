@@ -3,16 +3,8 @@ import logging
 import mimetypes
 from typing import List
 
-from media_handler import (
-    get_audio,
-    get_image,
-)
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.prompts.base import (
-    AssistantMessage,
-    Message,
-    UserMessage,
-)
+from mcp.server.fastmcp.prompts.base import AssistantMessage, Message, UserMessage
 from mcp.types import (
     AudioContent,
     BlobResourceContents,
@@ -22,6 +14,8 @@ from mcp.types import (
     TextContent,
 )
 from mcp_multi_server.utils import configure_logging
+
+from examples.utils.media_handler import get_audio, get_image
 
 
 logger = logging.getLogger(__name__)

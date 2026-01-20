@@ -57,6 +57,7 @@ class ChatFactory:
         *,
         generator_kwargs: Optional[Dict] = None,
         evaluator_kwargs: Optional[Dict] = None,
+        display_content: Optional[Callable] = None,
     ):
         """Initialize ChatFactory with models, tools, and optional MCP integration.
 
@@ -77,6 +78,7 @@ class ChatFactory:
         self.evaluator_model = evaluator_model
         self.evaluator_system_prompt = evaluator_system_prompt
         self.response_limit = response_limit
+        self.display_content = display_content
         self.generator_kwargs = generator_kwargs or {}
         self.evaluator_kwargs = evaluator_kwargs or {}
 
@@ -160,7 +162,9 @@ class ChatFactory:
             except Exception as e:
                 logger.warning("Error setting MCP logging level to %s: %s", log_level, e)
 
-    def instantiate_prompt(self, prompt_name: str, get_prompt_arguments: Callable) -> List[Dict[str, Any]]:
+    def instantiate_prompt(
+        self, prompt_name: str, get_prompt_arguments: Callable, display_content: Optional[Callable] = None
+    ) -> List[Dict[str, Any]]:
         """Retrieve a MCP prompt by name and convert to OpenAI message format.
         Args:
             prompt_name: Name of the MCP prompt to retrieve.
@@ -181,12 +185,16 @@ class ChatFactory:
 
         openai_messages = []
         for msg in prompt_result.messages:
+            if display_content:
+                display_content(msg.content)
             content = convert_mcp_content_to_message(msg.content)
             openai_messages.append({"role": msg.role, "content": content})
 
         return openai_messages
 
-    def instantiate_resource(self, resource_name: str, get_template_variables: Callable) -> List[Dict[str, Any]]:
+    def instantiate_resource(
+        self, resource_name: str, get_template_variables: Callable, display_result: Optional[Callable] = None
+    ) -> List[Dict[str, Any]]:
         """Retrieve a resource by name from the list of resources.
         Args:
             resource_name: Name of the resource to retrieve.
@@ -212,6 +220,8 @@ class ChatFactory:
             if resource_result.contents and hasattr(resource_result.contents[0], "text")
             else ""
         )
+        if display_result:
+            display_result(resource_result)
         return [{"role": "user", "content": resource_result_text}]
 
     def evaluate(self, user_message: str, agent_reply: str, extended_history: List[Dict[str, Any]]) -> Evaluation:
@@ -245,7 +255,7 @@ class ChatFactory:
             elif self.mcp_client:
                 # MCP tool
                 mcp_tool_result = self.mcp_client.call_tool(tool_name, arguments)
-                result = process_tool_result_content(mcp_tool_result)
+                result = process_tool_result_content(mcp_tool_result, self.display_content)
             else:
                 # Unknown tool
                 result = {}
@@ -324,7 +334,7 @@ class ChatFactory:
 
         return reply  # type: ignore
 
-    def get_gradio_chat(self) -> Callable[[str, List[Dict[str, Any]]], str]:
+    def get_chat(self) -> Callable[[str, List[Dict[str, Any]]], str]:
         return self.chat
 
     def stream_chat(self, message: str, history: List[Dict[str, Any]]) -> Generator[str, None, None]:

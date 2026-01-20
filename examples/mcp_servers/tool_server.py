@@ -12,10 +12,8 @@ from mcp.types import (
     ResourceLink,
 )
 from mcp_multi_server.utils import configure_logging
-from media_handler import (
-    get_audio,
-    get_image,
-)
+
+from examples.utils.media_handler import get_audio, get_image
 
 
 logger = logging.getLogger(__name__)

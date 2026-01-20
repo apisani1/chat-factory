@@ -38,7 +38,7 @@ ChatFactory
 - `__init__()`: Initializes factory with models, tools, and optional MCP config
 - `chat(message, history)`: Main chat loop with tool calling and evaluation
 - `_convert_tools_to_openai()`: Static method to convert custom tools to OpenAI format
-- `get_gradio_chat()`: Returns chat function compatible with Gradio interface
+- `get_chat()`: Returns chat function compatible with Gradio interface
 
 **Tool Conversion System**:
 Supports three formats for custom tools:
@@ -465,7 +465,7 @@ The codebase includes comprehensive tests:
 - `mcp-multi-server`: Multi-server MCP client implementation
 
 **Optional**:
-- `gradio`: For building chat UIs (if using `get_gradio_chat()`)
+- `gradio`: For building chat UIs (if using `get_chat()`)
 
 ## Future Enhancements
 

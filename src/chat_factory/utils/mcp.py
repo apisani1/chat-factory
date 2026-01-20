@@ -1,5 +1,6 @@
 from typing import (
     Any,
+    Callable,
     Dict,
     List,
     Optional,
@@ -23,7 +24,7 @@ from mcp.types import (
 from mcp_multi_server.utils import extract_template_variables
 
 
-def process_tool_result_content(tool_result: CallToolResult) -> str:
+def process_tool_result_content(tool_result: CallToolResult, display_content: Optional[Callable] = None) -> str:
     """Process tool result content blocks and convert to OpenAI tool response format.
 
     Args:
@@ -63,6 +64,8 @@ def process_tool_result_content(tool_result: CallToolResult) -> str:
 
     text_parts = []
     for content_block in tool_result.content:
+        if display_content:
+            display_content(content_block)
         # Convert to OpenAI tool format (always returns dict with 'text' key)
         converted = convert_mcp_content_to_tool_response(content_block)
         text_parts.append(converted["text"])

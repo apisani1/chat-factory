@@ -7,7 +7,7 @@ from chat_factory import (
     ChatModel,
 )
 from chat_factory.utils.factory import configure_logging
-from examples.utils.gradio_mcp import convert_gradio_messages_to_openai
+from utils.gradio_mcp import convert_gradio_messages_to_openai
 
 
 system_message = """You are a helpful AI assistant.
