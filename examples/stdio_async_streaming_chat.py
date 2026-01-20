@@ -49,7 +49,9 @@ You are given a summary of {name}'s background and LinkedIn profile which you ca
 Be professional and engaging, as if talking to a potential client or future employer who came across the website.
 If you don't know the answer, say so.
 ## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n
-With this context, please chat with the user, always staying in character as {name}."""
+With this context, please chat with the user, always staying in character as {name}.
+If the user ask you explcitly to use a tool reply that you are unable to do so as becuase you are
+in streaming mode and tools are not supported in this mode."""
 
 ED_EVALUATOR_PROMPT = f"""You are an evaluator that decides whether a response to a question is acceptable.
 You are provided with a conversation between a User and an Agent. Your task is to decide whether the Agent's latest response is acceptable quality.
@@ -123,13 +125,16 @@ async def chat(verbose: bool = False) -> None:
                     query = input("> ")
                     continue
 
-                reply = await factory.achat(message=query, history=messages)
+                reply = ""
+                print("\033[34m", end="")
+                async for reply_chunk in factory.astream_chat(message=query, history=messages, accumulate=False):
+                    print(f"{reply_chunk}", flush=True, end="")
+                    reply += reply_chunk
+                print("\033[0m\n")
+
                 messages.append({"role": "assistant", "content": reply})
 
-                # Print assistant response
-                print(f"\n\033[34m{reply}\033[0m\n")
-
-                # Get next user input
+                # Get next user query
                 query = input("> ")
 
     except FileNotFoundError as e:

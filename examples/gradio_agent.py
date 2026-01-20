@@ -42,7 +42,7 @@ def main() -> None:
     # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
     # Do here any necessary setup before starting Gradio interface
-    configure_logging(level="WARNING")
+    configure_logging(level="INFO")
 
     chat_factory = ChatFactory(
         generator_model=openai_model,

@@ -106,7 +106,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
-    configure_logging(level="WARNING")
+    configure_logging(level="INFO")
 
     with gr.Blocks() as demo:
         # Create explicit chatbot for MCP message injection

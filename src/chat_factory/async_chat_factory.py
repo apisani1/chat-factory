@@ -383,7 +383,9 @@ class AsyncChatFactory:
     def get_async_chat(self) -> Callable[[str, List[Dict[str, Any]]], Coroutine[Any, Any, str]]:
         return self.achat
 
-    async def astream_chat(self, message: str, history: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def astream_chat(
+        self, message: str, history: List[Dict[str, Any]], *, accumulate: bool = True
+    ) -> AsyncGenerator[str, None]:
         """
         Async stream chat response.
 
@@ -393,9 +395,11 @@ class AsyncChatFactory:
         Args:
             message: User message to respond to
             history: Conversation history
+            accumulate: If True, yield accumulated text (for Gradio).
+                       If False, yield individual chunks/deltas.
 
         Yields:
-            str: Accumulated response text (Gradio expects accumulated, not deltas)
+            str: Response text (accumulated or delta based on accumulate parameter)
         """
         messages = (
             [{"role": "system", "content": self.system_prompt}]
@@ -404,18 +408,25 @@ class AsyncChatFactory:
         )
 
         try:
-            accumulated = ""
-            async for chunk in self.generator_model.astream_response(
-                messages=messages,
-                **self.generator_kwargs,
-            ):
-                accumulated += chunk
-                yield accumulated
+            if accumulate:
+                accumulated = ""
+                async for chunk in self.generator_model.astream_response(
+                    messages=messages,
+                    **self.generator_kwargs,
+                ):
+                    accumulated += chunk
+                    yield accumulated
+            else:
+                async for chunk in self.generator_model.astream_response(
+                    messages=messages,
+                    **self.generator_kwargs,
+                ):
+                    yield chunk
         except Exception as e:
             logger.error("Error during streaming: %s", e)
             yield f"Sorry, I encountered an error: {e}"
 
-    def get_async_gradio_stream_chat(
+    def get_async_stream_chat(
         self,
     ) -> Callable[[str, List[Dict[str, Any]]], AsyncGenerator[str, None]]:
         """Return async streaming chat function for Gradio."""

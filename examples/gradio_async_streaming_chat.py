@@ -41,7 +41,7 @@ async def init_chat_factory() -> None:
         system_prompt=system_message,
     )
     await chat_factory.connect_to_mcp_servers()
-    chat_fn = chat_factory.get_async_gradio_stream_chat()
+    chat_fn = chat_factory.get_async_stream_chat()
 
 
 async def shutdown() -> str:
@@ -66,7 +66,7 @@ def main() -> None:
     global demo
 
     # Do here any necessary setup before starting Gradio interface
-    configure_logging(level="WARNING")
+    configure_logging(level="INFO")
 
     with gr.Blocks() as demo:
         gr.ChatInterface(fn=chat)

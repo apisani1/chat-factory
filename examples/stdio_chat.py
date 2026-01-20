@@ -1,5 +1,4 @@
 import argparse
-import asyncio
 import traceback
 from typing import (
     Any,
@@ -15,8 +14,8 @@ from mcp_multi_server.utils import print_capabilities_summary
 from pypdf import PdfReader
 
 from chat_factory import (
-    AsyncChatFactory,
-    AsyncChatModel,
+    ChatFactory,
+    ChatModel,
 )
 from chat_factory.utils.factory import configure_logging
 from utils.stdio_mcp import (
@@ -60,18 +59,18 @@ The Agent has been provided with context on {name} in the form of their summary 
 With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
 
-async def chat(verbose: bool = False) -> None:
+def chat(verbose: bool = False) -> None:
     configure_logging(level="INFO" if verbose else "WARNING")
 
-    openai_model = AsyncChatModel(model_name="gpt-5.2", provider="openai")
-    anthropic_model = AsyncChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
-    # google_model = AsyncChatModel(model_name="gemini-2.5-flash", provider="google")
-    # deepseek_model = AsyncChatModel(model_name="deepseek-chat", provider="deepseek")
-    # groq_model = AsyncChatModel(model_name="openai/gpt-oss-120b", provider="groq")
-    # ollama_model = AsyncChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
+    openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
+    anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
+    # google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
+    # deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
+    # groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
+    # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
     try:
-        async with AsyncChatFactory(
+        with ChatFactory(
             generator_model=openai_model,
             system_prompt=ED_GENERATOR_PROMPT,
             evaluator_model=anthropic_model,
@@ -81,7 +80,7 @@ async def chat(verbose: bool = False) -> None:
             display_content=display_mcp_content,
         ) as factory:
 
-            await factory.set_mcp_logging_level(level="CRITICAL")
+            factory.set_mcp_logging_level(level="CRITICAL")
             print_capabilities_summary(factory.mcp_client)  # type: ignore
 
             messages: List[Dict[str, Any]] = []
@@ -95,7 +94,7 @@ async def chat(verbose: bool = False) -> None:
                 # Add user message, prompt or resource
                 if query.startswith("+prompt:"):
                     prompt_name = query[len("+prompt:") :].strip()
-                    prompt_messages = await factory.instantiate_prompt(
+                    prompt_messages = factory.instantiate_prompt(
                         prompt_name=prompt_name,
                         get_prompt_arguments=get_prompt_arguments,
                         display_content=display_mcp_content,
@@ -109,7 +108,7 @@ async def chat(verbose: bool = False) -> None:
 
                 if query.startswith("+resource:"):
                     resource_name = query[len("+resource:") :].strip()
-                    resource_messages = await factory.instantiate_resource(
+                    resource_messages = factory.instantiate_resource(
                         resource_name=resource_name,
                         get_template_variables=get_template_variables,
                         display_result=display_mcp_resource_result,
@@ -123,7 +122,7 @@ async def chat(verbose: bool = False) -> None:
                     query = input("> ")
                     continue
 
-                reply = await factory.achat(message=query, history=messages)
+                reply = factory.chat(message=query, history=messages)
                 messages.append({"role": "assistant", "content": reply})
 
                 # Print assistant response
@@ -153,7 +152,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    asyncio.run(chat(verbose=args.verbose))
+    chat(verbose=args.verbose)
 
 
 if __name__ == "__main__":

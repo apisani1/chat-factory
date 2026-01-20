@@ -1,5 +1,5 @@
 import argparse
-import asyncio
+
 import traceback
 from typing import (
     Any,
@@ -15,8 +15,8 @@ from mcp_multi_server.utils import print_capabilities_summary
 from pypdf import PdfReader
 
 from chat_factory import (
-    AsyncChatFactory,
-    AsyncChatModel,
+    ChatFactory,
+    ChatModel,
 )
 from chat_factory.utils.factory import configure_logging
 from utils.stdio_mcp import (
@@ -49,7 +49,9 @@ You are given a summary of {name}'s background and LinkedIn profile which you ca
 Be professional and engaging, as if talking to a potential client or future employer who came across the website.
 If you don't know the answer, say so.
 ## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n
-With this context, please chat with the user, always staying in character as {name}."""
+With this context, please chat with the user, always staying in character as {name}.
+If the user ask you explcitly to use a tool reply that you are unable to do so as becuase you are
+in streaming mode and tools are not supported in this mode."""
 
 ED_EVALUATOR_PROMPT = f"""You are an evaluator that decides whether a response to a question is acceptable.
 You are provided with a conversation between a User and an Agent. Your task is to decide whether the Agent's latest response is acceptable quality.
@@ -60,18 +62,18 @@ The Agent has been provided with context on {name} in the form of their summary 
 With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
 
-async def chat(verbose: bool = False) -> None:
+def chat(verbose: bool = False) -> None:
     configure_logging(level="INFO" if verbose else "WARNING")
 
-    openai_model = AsyncChatModel(model_name="gpt-5.2", provider="openai")
-    anthropic_model = AsyncChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
-    # google_model = AsyncChatModel(model_name="gemini-2.5-flash", provider="google")
-    # deepseek_model = AsyncChatModel(model_name="deepseek-chat", provider="deepseek")
-    # groq_model = AsyncChatModel(model_name="openai/gpt-oss-120b", provider="groq")
-    # ollama_model = AsyncChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
+    openai_model = ChatModel(model_name="gpt-5.2", provider="openai")
+    anthropic_model = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
+    # google_model = ChatModel(model_name="gemini-2.5-flash", provider="google")
+    # deepseek_model = ChatModel(model_name="deepseek-chat", provider="deepseek")
+    # groq_model = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
+    # ollama_model = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 
     try:
-        async with AsyncChatFactory(
+        with ChatFactory(
             generator_model=openai_model,
             system_prompt=ED_GENERATOR_PROMPT,
             evaluator_model=anthropic_model,
@@ -81,7 +83,7 @@ async def chat(verbose: bool = False) -> None:
             display_content=display_mcp_content,
         ) as factory:
 
-            await factory.set_mcp_logging_level(level="CRITICAL")
+            factory.set_mcp_logging_level(level="CRITICAL")
             print_capabilities_summary(factory.mcp_client)  # type: ignore
 
             messages: List[Dict[str, Any]] = []
@@ -95,7 +97,7 @@ async def chat(verbose: bool = False) -> None:
                 # Add user message, prompt or resource
                 if query.startswith("+prompt:"):
                     prompt_name = query[len("+prompt:") :].strip()
-                    prompt_messages = await factory.instantiate_prompt(
+                    prompt_messages = factory.instantiate_prompt(
                         prompt_name=prompt_name,
                         get_prompt_arguments=get_prompt_arguments,
                         display_content=display_mcp_content,
@@ -109,7 +111,7 @@ async def chat(verbose: bool = False) -> None:
 
                 if query.startswith("+resource:"):
                     resource_name = query[len("+resource:") :].strip()
-                    resource_messages = await factory.instantiate_resource(
+                    resource_messages = factory.instantiate_resource(
                         resource_name=resource_name,
                         get_template_variables=get_template_variables,
                         display_result=display_mcp_resource_result,
@@ -123,13 +125,16 @@ async def chat(verbose: bool = False) -> None:
                     query = input("> ")
                     continue
 
-                reply = await factory.achat(message=query, history=messages)
+                reply = ""
+                print("\033[34m", end="")
+                for reply_chunk in factory.stream_chat(message=query, history=messages, accumulate=False):
+                    print(f"{reply_chunk}", flush=True, end="")
+                    reply += reply_chunk
+                print("\033[0m\n")
+
                 messages.append({"role": "assistant", "content": reply})
 
-                # Print assistant response
-                print(f"\n\033[34m{reply}\033[0m\n")
-
-                # Get next user input
+                # Get next user query
                 query = input("> ")
 
     except FileNotFoundError as e:
@@ -153,7 +158,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    asyncio.run(chat(verbose=args.verbose))
+    chat(verbose=args.verbose)
 
 
 if __name__ == "__main__":

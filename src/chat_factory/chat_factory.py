@@ -118,6 +118,25 @@ class ChatFactory:
                 logger.error("Error initializing MCP client: %s", e)
                 self.mcp_client = None
 
+    def __enter__(self) -> "ChatFactory":
+        """Enter context manager - MCP client already initialized in __init__."""
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: Optional[type],
+        _exc_val: Optional[BaseException],
+        _exc_tb: Optional[Any],
+    ) -> None:
+        """Exit context manager - cleanup MCP client."""
+        self.shutdown()
+
+    def shutdown(self) -> None:
+        """Shutdown MCP client and release resources."""
+        if self.mcp_client:
+            self.mcp_client.shutdown()
+            self.mcp_client = None
+
     @property
     def mcp_prompts(self) -> Dict[str, Any]:
         """Get MCP prompts if MCP client is initialized."""
@@ -337,7 +356,9 @@ class ChatFactory:
     def get_chat(self) -> Callable[[str, List[Dict[str, Any]]], str]:
         return self.chat
 
-    def stream_chat(self, message: str, history: List[Dict[str, Any]]) -> Generator[str, None, None]:
+    def stream_chat(
+        self, message: str, history: List[Dict[str, Any]], *, accumulate: bool = True
+    ) -> Generator[str, None, None]:
         """
         Stream chat response.
 
@@ -347,9 +368,11 @@ class ChatFactory:
         Args:
             message: User message to respond to
             history: Conversation history
+            accumulate: If True, yield accumulated text (for Gradio).
+                       If False, yield individual chunks/deltas.
 
         Yields:
-            str: Accumulated response text (Gradio expects accumulated, not deltas)
+            str: Response text (accumulated or delta based on accumulate parameter)
         """
         messages = (
             [{"role": "system", "content": self.system_prompt}]
@@ -358,13 +381,19 @@ class ChatFactory:
         )
 
         try:
-            accumulated = ""
-            for chunk in self.generator_model.stream_response(
-                messages=messages,
-                **self.generator_kwargs,
-            ):
-                accumulated += chunk
-                yield accumulated
+            if accumulate:
+                accumulated = ""
+                for chunk in self.generator_model.stream_response(
+                    messages=messages,
+                    **self.generator_kwargs,
+                ):
+                    accumulated += chunk
+                    yield accumulated
+            else:
+                yield from self.generator_model.stream_response(
+                    messages=messages,
+                    **self.generator_kwargs,
+                )
         except Exception as e:
             logger.error("Error during streaming: %s", e)
             yield f"Sorry, I encountered an error: {e}"

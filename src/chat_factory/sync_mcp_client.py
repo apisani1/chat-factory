@@ -298,6 +298,23 @@ class SyncMultiServerClient:
         future.result()  # Wait for completion
         return EmptyResult()
 
+    @property
+    def capabilities(self) -> Dict[str, Any]:
+        """Get combined capabilities from all connected MCP servers.
+
+        Returns:
+            Dictionary containing combined capabilities from all servers.
+            Returns empty dict if client not initialized or error occurs.
+        """
+        if self.mcp_client is None:
+            return {}
+
+        try:
+            return self.mcp_client.capabilities
+        except Exception as e:
+            logger.error("Error getting MCP capabilities: %s", e)
+            return {}
+
     async def _set_logging_level_async(self, level: LoggingLevel) -> None:
         """Async implementation of set_logging_level (runs in background loop)."""
         if self.mcp_client is None:
