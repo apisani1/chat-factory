@@ -89,9 +89,8 @@ class ChatFactory:
         self.mcp_client = None
         if mcp_config_path:
             try:
+                from mcp_multi_server import SyncMultiServerClient
                 from mcp_multi_server.utils import mcp_tools_to_openai_format
-
-                from .sync_mcp_client import SyncMultiServerClient
 
                 # Create and initialize MCP client
                 self.mcp_client = SyncMultiServerClient(mcp_config_path)
