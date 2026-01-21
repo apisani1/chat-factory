@@ -11,6 +11,7 @@ import atexit
 import logging
 import threading
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from datetime import timedelta
 from pathlib import Path
 from typing import (
     Any,
@@ -22,6 +23,7 @@ from typing import (
 
 from pydantic import AnyUrl
 
+from mcp.shared.session import ProgressFnT
 from mcp.types import (
     CallToolResult,
     EmptyResult,
@@ -31,6 +33,7 @@ from mcp.types import (
     ListResourceTemplatesResult,
     ListToolsResult,
     LoggingLevel,
+    PaginatedRequestParams,
     ReadResourceResult,
     TextContent,
 )
@@ -298,6 +301,12 @@ class SyncMultiServerClient:
         future.result()  # Wait for completion
         return EmptyResult()
 
+    async def _set_logging_level_async(self, level: LoggingLevel) -> None:
+        """Async implementation of set_logging_level (runs in background loop)."""
+        if self.mcp_client is None:
+            raise ValueError("MCP client not initialized")
+        await self.mcp_client.set_logging_level(level=level)
+
     @property
     def capabilities(self) -> Dict[str, Any]:
         """Get combined capabilities from all connected MCP servers.
@@ -315,13 +324,9 @@ class SyncMultiServerClient:
             logger.error("Error getting MCP capabilities: %s", e)
             return {}
 
-    async def _set_logging_level_async(self, level: LoggingLevel) -> None:
-        """Async implementation of set_logging_level (runs in background loop)."""
-        if self.mcp_client is None:
-            raise ValueError("MCP client not initialized")
-        await self.mcp_client.set_logging_level(level=level)
-
-    def list_tools(self) -> ListToolsResult:
+    def list_tools(
+        self, cursor: Optional[str] = None, *, params: Optional[PaginatedRequestParams] = None, **kwargs: Any
+    ) -> ListToolsResult:
         """List available MCP tools in raw MCP format.
 
         Returns:
@@ -332,12 +337,14 @@ class SyncMultiServerClient:
             return ListToolsResult(tools=[])
 
         try:
-            return self.mcp_client.list_tools()
+            return self.mcp_client.list_tools(cursor=cursor, params=params, **kwargs)
         except Exception as e:
             logger.error("Error listing MCP tools: %s", e)
             return ListToolsResult(tools=[])
 
-    def list_prompts(self) -> ListPromptsResult:
+    def list_prompts(
+        self, cursor: Optional[str] = None, *, params: Optional[PaginatedRequestParams] = None, **kwargs: Any
+    ) -> ListPromptsResult:
         """Get combined list of all prompts from all servers.
 
         Returns:
@@ -349,12 +356,19 @@ class SyncMultiServerClient:
             return ListPromptsResult(prompts=[], nextCursor=None)
 
         try:
-            return self.mcp_client.list_prompts()
+            return self.mcp_client.list_prompts(cursor=cursor, params=params, **kwargs)
         except Exception as e:
             logger.error("Error listing prompts: %s", e)
             return ListPromptsResult(prompts=[], nextCursor=None)
 
-    def list_resources(self, use_namespace: bool = True) -> ListResourcesResult:
+    def list_resources(
+        self,
+        cursor: Optional[str] = None,
+        *,
+        params: Optional[PaginatedRequestParams] = None,
+        use_namespace: bool = True,
+        **kwargs: Any,
+    ) -> ListResourcesResult:
         """Get combined list of all resources from all servers.
 
         Args:
@@ -370,12 +384,19 @@ class SyncMultiServerClient:
             return ListResourcesResult(resources=[], nextCursor=None)
 
         try:
-            return self.mcp_client.list_resources(use_namespace=use_namespace)
+            return self.mcp_client.list_resources(cursor=cursor, params=params, use_namespace=use_namespace, **kwargs)
         except Exception as e:
             logger.error("Error listing resources: %s", e)
             return ListResourcesResult(resources=[], nextCursor=None)
 
-    def list_resource_templates(self, use_namespace: bool = True) -> ListResourceTemplatesResult:
+    def list_resource_templates(
+        self,
+        cursor: Optional[str] = None,
+        *,
+        params: Optional[PaginatedRequestParams] = None,
+        use_namespace: bool = True,
+        **kwargs: Any,
+    ) -> ListResourceTemplatesResult:
         """Get combined list of all resource templates from all servers.
 
         Args:
@@ -391,7 +412,9 @@ class SyncMultiServerClient:
             return ListResourceTemplatesResult(resourceTemplates=[], nextCursor=None)
 
         try:
-            return self.mcp_client.list_resource_templates(use_namespace=use_namespace)
+            return self.mcp_client.list_resource_templates(
+                cursor=cursor, params=params, use_namespace=use_namespace, **kwargs
+            )
         except Exception as e:
             logger.error("Error listing resource templates: %s", e)
             return ListResourceTemplatesResult(resourceTemplates=[], nextCursor=None)
@@ -412,15 +435,20 @@ class SyncMultiServerClient:
 
     def call_tool(
         self,
-        tool_name: str,
+        name: str,
         arguments: Dict,
+        read_timeout_seconds: Optional[timedelta] = None,
+        progress_callback: Optional[ProgressFnT] = None,
         timeout: Optional[float] = None,
+        *,
+        meta: Optional[dict[str, Any]] = None,
+        server_name: Optional[str] = None,
         **kwargs: Any,
     ) -> CallToolResult:
         """Call MCP tool synchronously with optional timeout.
 
         Args:
-            tool_name: Name of the tool to call
+            name: Name of the tool to call
             arguments: Tool arguments as dictionary
             timeout: Maximum seconds to wait. None means wait forever.
 
@@ -430,18 +458,39 @@ class SyncMultiServerClient:
         if self.loop is None or self.mcp_client is None:
             return self._create_error_result("MCP client not initialized")
 
-        future = asyncio.run_coroutine_threadsafe(self._call_tool_async(tool_name, arguments, **kwargs), self.loop)
+        future = asyncio.run_coroutine_threadsafe(
+            self._call_tool_async(
+                name,
+                arguments,
+                read_timeout_seconds=read_timeout_seconds,
+                progress_callback=progress_callback,
+                meta=meta,
+                server_name=server_name,
+                **kwargs,
+            ),
+            self.loop,
+        )
 
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:
-            return self._create_error_result(f"MCP tool '{tool_name}' timed out after {timeout} seconds")
+            return self._create_error_result(f"MCP tool '{name}' timed out after {timeout} seconds")
 
-    async def _call_tool_async(self, tool_name: str, arguments: Dict, **kwargs: Any) -> CallToolResult:
+    async def _call_tool_async(
+        self,
+        name: str,
+        arguments: Dict,
+        read_timeout_seconds: Optional[timedelta] = None,
+        progress_callback: Optional[ProgressFnT] = None,
+        *,
+        meta: Optional[dict[str, Any]] = None,
+        server_name: Optional[str] = None,
+        **kwargs: Any,
+    ) -> CallToolResult:
         """Async implementation of tool call (runs in background loop).
 
         Args:
-            tool_name: Name of the tool to call
+            name: Name of the tool to call
             arguments: Tool arguments
 
         Returns:
@@ -451,16 +500,25 @@ class SyncMultiServerClient:
             if self.mcp_client is None:
                 raise ValueError("MCP client not initialized")
 
-            return await self.mcp_client.call_tool(tool_name, arguments, **kwargs)
+            return await self.mcp_client.call_tool(
+                name=name,
+                arguments=arguments,
+                read_timeout_seconds=read_timeout_seconds,
+                progress_callback=progress_callback,
+                meta=meta,
+                server_name=server_name,
+                **kwargs,
+            )
         except Exception as e:
-            logger.error("Error calling MCP tool '%s': %s", tool_name, e)
-            return self._create_error_result(f"Error calling MCP tool '{tool_name}': {e}")
+            logger.error("Error calling MCP tool '%s': %s", name, e)
+            return self._create_error_result(f"Error calling MCP tool '{name}': {e}")
 
     def read_resource(
         self,
         uri: Union[str, AnyUrl],
         server_name: Optional[str] = None,
         timeout: Optional[float] = None,
+        **kwargs: Any,
     ) -> ReadResourceResult:
         """Read a resource with optional auto-routing via namespaced URIs.
 
@@ -489,18 +547,22 @@ class SyncMultiServerClient:
         if self.loop is None or self.mcp_client is None:
             return ReadResourceResult(contents=[])
 
-        future = asyncio.run_coroutine_threadsafe(self._read_resource_async(uri, server_name), self.loop)
+        future = asyncio.run_coroutine_threadsafe(
+            self._read_resource_async(uri=uri, server_name=server_name, **kwargs), self.loop
+        )
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:
             logger.error("Read resource timed out after %s seconds", timeout)
             return ReadResourceResult(contents=[])
 
-    async def _read_resource_async(self, uri: Union[str, AnyUrl], server_name: Optional[str]) -> ReadResourceResult:
+    async def _read_resource_async(
+        self, uri: Union[str, AnyUrl], server_name: Optional[str], **kwargs: Any
+    ) -> ReadResourceResult:
         """Async implementation of read_resource (runs in background loop)."""
         if self.mcp_client is None:
             raise ValueError("MCP client not initialized")
-        return await self.mcp_client.read_resource(uri, server_name=server_name)
+        return await self.mcp_client.read_resource(uri=uri, server_name=server_name, **kwargs)
 
     def get_prompt(
         self,
@@ -508,6 +570,7 @@ class SyncMultiServerClient:
         arguments: Optional[Dict[str, str]] = None,
         server_name: Optional[str] = None,
         timeout: Optional[float] = None,
+        **kwargs: Any,
     ) -> GetPromptResult:
         """Get a prompt by automatically routing to the appropriate server.
 
@@ -533,7 +596,9 @@ class SyncMultiServerClient:
         if self.loop is None or self.mcp_client is None:
             return GetPromptResult(messages=[])
 
-        future = asyncio.run_coroutine_threadsafe(self._get_prompt_async(name, arguments, server_name), self.loop)
+        future = asyncio.run_coroutine_threadsafe(
+            self._get_prompt_async(name=name, arguments=arguments, server_name=server_name, **kwargs), self.loop
+        )
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:
@@ -545,8 +610,9 @@ class SyncMultiServerClient:
         name: str,
         arguments: Optional[Dict[str, str]],
         server_name: Optional[str],
+        **kwargs: Any,
     ) -> GetPromptResult:
         """Async implementation of get_prompt (runs in background loop)."""
         if self.mcp_client is None:
             raise ValueError("MCP client not initialized")
-        return await self.mcp_client.get_prompt(name, arguments=arguments, server_name=server_name)
+        return await self.mcp_client.get_prompt(name, arguments=arguments, server_name=server_name, **kwargs)
