@@ -397,6 +397,6 @@ class ChatFactory:
             logger.error("Error during streaming: %s", e)
             yield f"Sorry, I encountered an error: {e}"
 
-    def get_gradio_stream_chat(self) -> Callable[[str, List[Dict[str, Any]]], Generator[str, None, None]]:
+    def get_stream_chat(self) -> Callable[[str, List[Dict[str, Any]]], Generator[str, None, None]]:
         """Return streaming chat function for Gradio."""
         return self.stream_chat
