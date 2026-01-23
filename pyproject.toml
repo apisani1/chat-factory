@@ -60,8 +60,9 @@ optional = true
 optional = true
 
 [tool.poetry.group.test.dependencies]
-pytest = "^7.4.0"
+pytest = "^8.2.0"
 pytest-cov = "^6.1.0"
+pytest-asyncio = "^0.24.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
