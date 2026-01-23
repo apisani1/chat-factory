@@ -8,11 +8,8 @@ from chat_factory import (
 )
 from chat_factory.utils.factory import configure_logging
 from utils.gradio_mcp import convert_gradio_messages_to_openai
+from utils.streaming_chat import SYSTEM_MESSAGE
 
-
-system_message = """You are a helpful AI assistant.
-Your responsibility is to provide accurate, professional, and engaging responses to user questions.
-Be clear and concise in your answers."""
 
 chat_fn = None
 
@@ -40,7 +37,7 @@ def main() -> None:
     # Create ChatFactory
     chat_factory = ChatFactory(
         generator_model=openai_model,
-        system_prompt=system_message,
+        system_prompt=SYSTEM_MESSAGE,
     )
 
     def stream_chat_with_multimodal(message: str, history: list) -> Generator[str, None, None]:

@@ -7,17 +7,17 @@ from typing import (
     List,
 )
 
-from dotenv import (
-    find_dotenv,
-    load_dotenv,
-)
-from mcp_multi_server.utils import print_capabilities_summary
-
 from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
 from chat_factory.utils.factory import configure_logging
+from dotenv import (
+    find_dotenv,
+    load_dotenv,
+)
+from mcp_multi_server.utils import print_capabilities_summary
+from utils.agent import SYSTEM_MESSAGE
 from utils.stdio_mcp import (
     display_mcp_content,
     display_mcp_resource_result,
@@ -26,13 +26,6 @@ from utils.stdio_mcp import (
 )
 from utils.tools import tools
 
-system_message = """
-You are given a problem to solve, by using your todo tools to plan a list of steps, then carrying out each step in turn.
-Now use the todo list tools, create a plan, carry out the steps, and reply with the solution.
-If any quantity isn't provided in the question, then include a step to come up with a reasonable estimate.
-Provide your solution in Markdown markup without code blocks.
-Do not ask the user questions or clarification; respond only with the answer after using your tools.
-"""
 
 load_dotenv(find_dotenv())
 
@@ -50,7 +43,7 @@ async def chat(verbose: bool = False) -> None:
     try:
         async with AsyncChatFactory(
             generator_model=openai_model,
-            system_prompt=system_message,
+            system_prompt=SYSTEM_MESSAGE,
             tools=tools,
             generator_kwargs={"reasoning_effort": "none"},
             mcp_config_path="mcp_config.json",

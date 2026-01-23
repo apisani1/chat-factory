@@ -7,18 +7,20 @@ from typing import (
     List,
 )
 
-from dotenv import (
-    find_dotenv,
-    load_dotenv,
-)
-from mcp_multi_server.utils import print_capabilities_summary
-from pypdf import PdfReader
-
 from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
 from chat_factory.utils.factory import configure_logging
+from dotenv import (
+    find_dotenv,
+    load_dotenv,
+)
+from mcp_multi_server.utils import print_capabilities_summary
+from utils.chat import (
+    EVALUATOR_PROMPT,
+    GENERATOR_PROMPT,
+)
 from utils.stdio_mcp import (
     display_mcp_content,
     display_mcp_resource_result,
@@ -29,35 +31,6 @@ from utils.tools import tools
 
 
 load_dotenv(find_dotenv())
-
-reader = PdfReader("me/linkedin.pdf")
-linkedin = ""
-for page in reader.pages:
-    text = page.extract_text()
-    if text:
-        linkedin += text
-
-with open("me/summary.txt", "r", encoding="utf-8") as f:
-    summary = f.read()
-
-name = "Ed Donner"
-
-ED_GENERATOR_PROMPT = f"""You are acting as {name}. You are answering questions on {name}'s website,
-particularly questions related to {name}'s career, background, skills and experience.
-Your responsibility is to represent {name} for interactions on the website as faithfully as possible.
-You are given a summary of {name}'s background and LinkedIn profile which you can use to answer questions.
-Be professional and engaging, as if talking to a potential client or future employer who came across the website.
-If you don't know the answer, say so.
-## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n
-With this context, please chat with the user, always staying in character as {name}."""
-
-ED_EVALUATOR_PROMPT = f"""You are an evaluator that decides whether a response to a question is acceptable.
-You are provided with a conversation between a User and an Agent. Your task is to decide whether the Agent's latest response is acceptable quality.
-The Agent is playing the role of {name} and is representing {name} on their website.
-The Agent has been instructed to be professional and engaging, as if talking to a potential client or future employer who came across the website.
-The Agent has been provided with context on {name} in the form of their summary and LinkedIn details. Here's the information:"
-## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n"
-With this context, please evaluate the latest response, replying with whether the response is acceptable and your feedback."""
 
 
 async def chat(verbose: bool = False) -> None:
@@ -73,9 +46,9 @@ async def chat(verbose: bool = False) -> None:
     try:
         async with AsyncChatFactory(
             generator_model=openai_model,
-            system_prompt=ED_GENERATOR_PROMPT,
+            system_prompt=GENERATOR_PROMPT,
             evaluator_model=anthropic_model,
-            evaluator_system_prompt=ED_EVALUATOR_PROMPT,
+            evaluator_system_prompt=EVALUATOR_PROMPT,
             tools=tools,
             mcp_config_path="mcp_config.json",
             display_content=display_mcp_content,

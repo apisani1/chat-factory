@@ -12,6 +12,7 @@ from chat_factory import (
     AsyncChatModel,
 )
 from chat_factory.utils.factory import configure_logging
+from utils.agent import SYSTEM_MESSAGE
 from utils.gradio_mcp import (
     AsyncMCPHandler,
     convert_gradio_messages_to_openai,
@@ -19,14 +20,6 @@ from utils.gradio_mcp import (
 )
 from utils.tools import tools
 
-
-system_message = """
-You are given a problem to solve, by using your todo tools to plan a list of steps, then carrying out each step in turn.
-Now use the todo list tools, create a plan, carry out the steps, and reply with the solution.
-If any quantity isn't provided in the question, then include a step to come up with a reasonable estimate.
-Provide your solution in Markdown markup without code blocks.
-Do not ask the user questions or clarification; respond only with the answer after using your tools.
-"""
 
 chat_factory: Optional[AsyncChatFactory] = None
 chat_fn = None
@@ -51,7 +44,7 @@ async def init_chat_factory() -> tuple:
 
     chat_factory = AsyncChatFactory(
         generator_model=openai_model,
-        system_prompt=system_message,
+        system_prompt=SYSTEM_MESSAGE,
         tools=tools,
         generator_kwargs={"reasoning_effort": "none"},
         mcp_config_path="mcp_config.json",

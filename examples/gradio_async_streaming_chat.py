@@ -8,18 +8,14 @@ from typing import (
 )
 
 import gradio as gr
-
 from chat_factory import (
     AsyncChatFactory,
     AsyncChatModel,
 )
 from chat_factory.utils.factory import configure_logging
 from utils.gradio_mcp import convert_gradio_messages_to_openai
+from utils.streaming_chat import SYSTEM_MESSAGE
 
-
-system_message = """You are a helpful AI assistant.
-Your responsibility is to provide accurate, professional, and engaging responses to user questions.
-Be clear and concise in your answers."""
 
 chat_factory: Optional[AsyncChatFactory] = None
 chat_fn = None
@@ -38,7 +34,7 @@ async def init_chat_factory() -> None:
 
     chat_factory = AsyncChatFactory(
         generator_model=openai_model,
-        system_prompt=system_message,
+        system_prompt=SYSTEM_MESSAGE,
     )
     await chat_factory.connect_to_mcp_servers()
     chat_fn = chat_factory.get_async_stream_chat()
