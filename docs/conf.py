@@ -33,10 +33,9 @@ src_dir = project_root / "src"
 if src_dir.exists():
     sys.path.insert(0, str(src_dir))
 
-# Also add the specific package directory if it exists
-package_dir = src_dir / "chat_factory"
-if package_dir.exists():
-    sys.path.insert(0, str(package_dir))
+# Print for debugging (only during build)
+print(f"Sphinx build: Adding {src_dir} to sys.path")
+print(f"sys.path: {sys.path[:3]}")
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
