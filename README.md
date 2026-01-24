@@ -8,7 +8,7 @@ A flexible Python framework for building LLM-powered chat applications with adva
 
 ## Overview
 
-**chat-factory** is a comprehensive framework for building sophisticated LLM-powered applications with:
+**chat-factory** is a comprehensive framework for building LLM-powered chabot applications with:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Groq, Ollama
 - **Tool calling**: Custom Python functions as tools with automatic schema generation
@@ -47,7 +47,7 @@ from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
 # Initialize the model
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 
 # Create a chat factory
 factory = ChatFactory(generator_model=model)
@@ -75,7 +75,7 @@ def get_weather(location: str) -> dict:
     return {"temp": 72, "condition": "sunny", "location": location}
 
 # Initialize model and factory with tools
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(
     generator_model=model,
     tools=[get_weather]  # Schema auto-generated from function signature
@@ -94,7 +94,7 @@ from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
 # Initialize with MCP configuration
-model = ChatModel("claude-sonnet-4", provider="anthropic")
+model = ChatModel("claude-sonnet-4-5", provider="anthropic")
 factory = ChatFactory(
     generator_model=model,
     mcp_config_path="mcp_config.json"  # Connects to MCP servers
@@ -113,8 +113,8 @@ from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
 # Use different models for generation and evaluation
-generator = ChatModel("gpt-4o", provider="openai")
-evaluator = ChatModel("gpt-4o-mini", provider="openai")
+generator = ChatModel(model_name="gpt-5.2", provider="openai")
+evaluator = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
 
 factory = ChatFactory(
     generator_model=generator,
@@ -138,19 +138,22 @@ Switch between LLM providers with a single parameter:
 from chat_factory.models import ChatModel
 
 # OpenAI
-gpt4 = ChatModel("gpt-4o", provider="openai")
+gpt4 = ChatModel("gpt-5.2", provider="openai")
 
 # Anthropic
-claude = ChatModel("claude-sonnet-4", provider="anthropic")
+claude = ChatModel("claude-sonnet-4-5", provider="anthropic")
 
 # Google
-gemini = ChatModel("gemini-2.0-flash-exp", provider="google")
+gemini = ChatModel("gemini-2.5-flash", provider="google")
 
 # DeepSeek
 deepseek = ChatModel("deepseek-chat", provider="deepseek")
 
+# Groq
+groq = ChatModel(model_name="openai/gpt-oss-120b", provider="groq")
+
 # Local with Ollama
-llama = ChatModel("llama3.3", provider="ollama")
+llama = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 ```
 
 ### 🔧 Automatic Tool Schema Generation
@@ -235,7 +238,7 @@ class WeatherResponse(BaseModel):
     condition: str
     humidity: int
 
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 response = model.generate_response(
     [{"role": "user", "content": "What's the weather in SF?"}],
     response_format=WeatherResponse
@@ -250,12 +253,12 @@ Stream responses in real-time:
 
 ```python
 from chat_factory import AsyncChatFactory
-from chat_factory.models import ChatModel
+from chat_factory.async_models import AsyncChatModel
 
-model = ChatModel("gpt-4o", provider="openai")
+model = AsyncChatModel("gpt-5.2", provider="openai")
 factory = AsyncChatFactory(generator_model=model)
 
-async for chunk in factory.stream_chat("Tell me a story", []):
+async for chunk in factory.stream_chat("Tell me a story", [], accumulate=False):
     print(chunk, end="", flush=True)
 ```
 
@@ -288,7 +291,7 @@ python examples/stdio_chat.py
 
 ## Development
 
-This project uses Poetry for dependency management:
+This project uses Poetry for dependency management and a set of development commands:
 
 ```bash
 # Install dependencies
@@ -329,10 +332,6 @@ The framework follows a layered design:
 ```
 
 See [CHAT_FACTORY_ARCHITECTURE.md](CHAT_FACTORY_ARCHITECTURE.md) for comprehensive architecture details.
-
-## Contributing
-
-Contributions are welcome! Please see our contributing guidelines.
 
 ## License
 
