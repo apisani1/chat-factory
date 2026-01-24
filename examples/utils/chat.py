@@ -1,7 +1,7 @@
 from pypdf import PdfReader
 
 
-reader = PdfReader("turing/wikipedia.pdf")
+reader = PdfReader("turing/wikipedia-short.pdf")
 linkedin = ""
 for page in reader.pages:
     text = page.extract_text()
