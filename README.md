@@ -8,7 +8,7 @@ A flexible Python framework for building LLM-powered chat applications with adva
 
 ## Overview
 
-**chat-factory** is a comprehensive framework for building LLM-powered chabot applications with:
+**chat-factory** is a comprehensive framework for building LLM-powered chatbot applications with:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Groq, Ollama
 - **Tool calling**: Custom Python functions as tools with automatic schema generation
@@ -258,7 +258,7 @@ from chat_factory.async_models import AsyncChatModel
 model = AsyncChatModel("gpt-5.2", provider="openai")
 factory = AsyncChatFactory(generator_model=model)
 
-async for chunk in factory.stream_chat("Tell me a story", [], accumulate=False):
+async for chunk in factory.astream_chat("Tell me a story", [], accumulate=False):
     print(chunk, end="", flush=True)
 ```
 
@@ -318,17 +318,17 @@ The framework follows a layered design:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ChatFactory                               │
+│                    ChatFactory                              │
 │  (Orchestration: tool calling, evaluation, retry logic)     │
 └─────────────────┬───────────────────────────────────────────┘
                   │
     ┌─────────────┼─────────────┐
     │             │             │
     ▼             ▼             ▼
-┌─────────┐  ┌─────────┐  ┌──────────────┐
-│ChatModel│  │ Tools   │  │ SyncMCPClient│
-│(LLM API)│  │(Custom) │  │(External)    │
-└─────────┘  └─────────┘  └──────────────┘
+┌─────────┐  ┌─────────┐  ┌──────────────────────┐
+│ChatModel│  │ Tools   │  │ SyncMultiServerClient│
+│(LLM API)│  │(Custom) │  │(External)            │
+└─────────┘  └─────────┘  └──────────────────────┘
 ```
 
 See [CHAT_FACTORY_ARCHITECTURE.md](CHAT_FACTORY_ARCHITECTURE.md) for comprehensive architecture details.

@@ -4,7 +4,7 @@ Welcome to the chat-factory documentation! This is a flexible Python framework f
 
 ## What is chat-factory?
 
-**chat-factory** is a comprehensive framework that makes it easy to build sophisticated AI applications with:
+**chat-factory** s a comprehensive framework for building LLM-powered chatbot applications with:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Groq, Ollama
 - **Tool calling**: Register custom Python functions as tools with automatic schema generation
@@ -43,7 +43,7 @@ def get_weather(location: str) -> dict:
     return {"temp": 72, "condition": "sunny", "location": location}
 
 # Initialize with automatic tool schema generation
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(
     generator_model=model,
     tools=[get_weather]  # Schema auto-generated!
@@ -73,16 +73,16 @@ poetry add chat-factory
 
 ### ChatFactory
 
-The `ChatFactory` class orchestrates the entire conversation flow:
+The `ChatFactory` and `AsyncChatFactory` classes orchestrate the entire conversation flow:
 
-- Manages conversation history
-- Executes tool calls (both custom and MCP tools)
+- Manage conversation history
+- Executs tool calls (both custom and MCP tools)
 - Optionally evaluates response quality
 - Handles retry logic with feedback
 
 ### ChatModel
 
-The `ChatModel` class provides a unified interface for all LLM providers:
+The `ChatModel` and `AsyncChatModel` classes provide a unified interface for all LLM providers:
 
 - Single API across OpenAI, Anthropic, Google, etc.
 - Automatic message format conversion
@@ -110,17 +110,17 @@ The Model Context Protocol (MCP) allows you to connect to external data sources 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ChatFactory                               │
+│                    ChatFactory                              │
 │  (Orchestration: tool calling, evaluation, retry logic)     │
 └─────────────────┬───────────────────────────────────────────┘
                   │
     ┌─────────────┼─────────────┐
     │             │             │
     ▼             ▼             ▼
-┌─────────┐  ┌─────────┐  ┌──────────────┐
-│ChatModel│  │ Tools   │  │ SyncMCPClient│
-│(LLM API)│  │(Custom) │  │(External)    │
-└─────────┘  └─────────┘  └──────────────┘
+┌─────────┐  ┌─────────┐  ┌──────────────────────┐
+│ChatModel│  │ Tools   │  │ SyncMultiServerClient│
+│(LLM API)│  │(Custom) │  │     (External)       │
+└─────────┘  └─────────┘  └──────────────────────┘
 ```
 
 See the [Architecture Guide](https://github.com/apisani1/chat-factory/blob/main/CHAT_FACTORY_ARCHITECTURE.md) for comprehensive details.

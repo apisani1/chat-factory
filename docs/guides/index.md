@@ -46,7 +46,7 @@ from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
 # Initialize the model
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 
 # Create a chat factory
 factory = ChatFactory(generator_model=model)
@@ -71,7 +71,7 @@ Maintain conversation history for context-aware responses:
 from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(generator_model=model)
 
 history = []
@@ -100,24 +100,22 @@ Switch between LLM providers easily:
 from chat_factory.models import ChatModel
 
 # OpenAI
-gpt4 = ChatModel("gpt-4o", provider="openai")
-gpt_mini = ChatModel("gpt-4o-mini", provider="openai")
+gpt4 = ChatModel("gpt-5.2", provider="openai")
 
 # Anthropic
-claude = ChatModel("claude-sonnet-4", provider="anthropic")
-claude_haiku = ChatModel("claude-3-5-haiku-20241022", provider="anthropic")
+claude = ChatModel("claude-sonnet-4-5", provider="anthropic")
 
 # Google
-gemini = ChatModel("gemini-2.0-flash-exp", provider="google")
+gemini = ChatModel("gemini-2.5-flash", provider="google")
 
 # DeepSeek
 deepseek = ChatModel("deepseek-chat", provider="deepseek")
 
 # Groq
-groq = ChatModel("llama-3.3-70b-versatile", provider="groq")
+groq = ChatModel("openai/gpt-oss-120b", provider="groq")
 
 # Ollama (local)
-llama = ChatModel("llama3.3", provider="ollama")
+llama = ChatModel(model_name="deepseek-r1:7b", provider="ollama", api_key="unused")
 ```
 
 ## Tool Integration
@@ -161,7 +159,7 @@ def calculate_tip(bill_amount: float, tip_percentage: float = 15.0) -> dict:
     }
 
 # Register tools - schemas auto-generated from signatures and docstrings
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(
     generator_model=model,
     tools=[get_weather, calculate_tip]
@@ -321,7 +319,7 @@ The Model Context Protocol (MCP) allows you to connect AI applications to extern
 from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-model = ChatModel("claude-sonnet-4", provider="anthropic")
+model = ChatModel("claude-sonnet-4-5", provider="anthropic")
 factory = ChatFactory(
     generator_model=model,
     mcp_config_path="mcp_config.json"
@@ -383,14 +381,14 @@ For better user experience, stream responses as they're generated:
 ```python
 import asyncio
 from chat_factory import AsyncChatFactory
-from chat_factory.models import ChatModel
+from chat_factory.async_models import AsyncChatModel
 
 async def main():
-    model = ChatModel("gpt-4o", provider="openai")
+    model = AsyncChatModel("gpt-5.2", provider="openai")
     factory = AsyncChatFactory(generator_model=model)
 
     history = []
-    async for chunk in factory.stream_chat("Tell me a story about a robot", history):
+    async for chunk in factory.astream_chat("Tell me a story about a robot", history, accumulated=False):
         print(chunk, end="", flush=True)
     print()  # New line at end
 
@@ -404,7 +402,7 @@ import gradio as gr
 from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(generator_model=model)
 
 # Get Gradio-compatible streaming chat function
@@ -429,8 +427,8 @@ from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
 # Use different models to avoid bias
-generator = ChatModel("gpt-4o", provider="openai")
-evaluator = ChatModel("claude-sonnet-4", provider="anthropic")
+generator = ChatModel("gpt-5.2", provider="openai")
+evaluator = ChatModel("claude-sonnet-4-5", provider="anthropic")
 
 factory = ChatFactory(
     generator_model=generator,
@@ -450,7 +448,7 @@ print(response)
 2. Evaluator checks response quality
 3. If rejected, generator tries again with feedback
 4. Process repeats up to `response_limit` times
-5. Best response is returned
+5. Last response is returned
 
 This ensures higher quality responses but increases latency and token usage.
 
@@ -497,14 +495,14 @@ For async applications (like FastAPI):
 ```python
 import asyncio
 from chat_factory import AsyncChatFactory
-from chat_factory.models import ChatModel
+from chat_factory.async_models import AsyncChatModel
 
 async def main():
-    model = ChatModel("gpt-4o", provider="openai")
+    model = AsyncChatModel("gpt-5.2", provider="openai")
     factory = AsyncChatFactory(generator_model=model)
 
     history = []
-    response = await factory.chat("Hello!", history)
+    response = await factory.achat("Hello!", history)
     print(response)
 
 asyncio.run(main())
@@ -515,22 +513,14 @@ asyncio.run(main())
 Set a system prompt to guide the AI's behavior:
 
 ```python
+from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
+factory = ChatFactory(generator_model=model, system_prompt="You are a helpful coding assistant specializing in Python.")
 
-messages = [
-    {
-        "role": "system",
-        "content": "You are a helpful coding assistant specializing in Python."
-    },
-    {
-        "role": "user",
-        "content": "How do I read a CSV file?"
-    }
-]
-
-response = model.generate_response(messages)
+history = []
+response = factory.chat("How do I read a CSV file?", history)
 print(response)
 ```
 
@@ -539,24 +529,15 @@ print(response)
 Pass provider-specific parameters:
 
 ```python
+from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-# OpenAI with custom parameters
-model = ChatModel("gpt-4o", provider="openai")
-response = model.generate_response(
-    messages,
+model = ChatModel("gpt-5.2", provider="openai")
+factory = ChatFactory(generator_model=model, generator_kwargs={
     temperature=0.7,
     max_tokens=500,
     top_p=0.9
-)
-
-# Anthropic with custom parameters
-model = ChatModel("claude-sonnet-4", provider="anthropic")
-response = model.generate_response(
-    messages,
-    temperature=0.8,
-    max_tokens=2000
-)
+})
 ```
 
 ### Gradio Integration
@@ -568,7 +549,7 @@ import gradio as gr
 from chat_factory import ChatFactory
 from chat_factory.models import ChatModel
 
-model = ChatModel("gpt-4o", provider="openai")
+model = ChatModel("gpt-5.2", provider="openai")
 factory = ChatFactory(generator_model=model)
 
 # Get Gradio-compatible chat function
@@ -672,7 +653,7 @@ If MCP servers fail to connect:
 ### Common Pitfalls
 
 1. **Forgetting to update history**: Always append messages to history for context
-2. **Tool name conflicts**: MCP tools override custom tools with the same name
+2. **Tool name conflicts**: Custom tools override  MCP tools with the same name
 3. **Missing max_tokens for Anthropic**: Anthropic requires max_tokens parameter
 4. **Not calling MCP client shutdown**: Use context manager or call `shutdown()`
 
