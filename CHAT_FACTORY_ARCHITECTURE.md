@@ -1,26 +1,26 @@
 # Chat Factory Architecture Summary
 
-This document describes the architecture of the `chat_factory` module, providing a comprehensive overview for onboarding in a new repository.
+This document describes the architecture of the `chat_factory` library, providing a comprehensive overview for onboarding in a new repository.
 
 ## Overview
 
 The chat-factory project provides a flexible framework for building LLM-powered chat applications with:
 - Multi-provider LLM support (OpenAI, Anthropic, Google, DeepSeek, Groq, Ollama)
 - Tool calling / function calling capabilities
-- MCP (Model Context Protocol) integration for external tools
+- MCP (Model Context Protocol) integration for external tools, prompts and resources
 - Automatic schema generation from Python functions
 - Evaluation loop for quality control
 
 ## Core Components
 
-### 1. ChatFactory (`chat_factory.py`)
+### 1. ChatFactory (`chat_factory.py` and `async_chat_factory.py`)
 
-**Purpose**: Factory class for creating chat functions with optional evaluator feedback loop and MCP tool integration.
+**Purpose**: Factory class for creating chat functions with optional evaluator feedback loop, tools and MCP capabilities integration.
 
 **Key Features**:
 - Creates configurable chat interfaces with generator and optional evaluator models
 - Supports custom Python function tools with automatic schema generation
-- Integrates with MCP servers for external tool calling
+- Integrates with MCP servers for external tool, prompt and respource calling
 - Implements retry loop with evaluator feedback for quality control
 - Handles tool calling orchestration (both custom and MCP tools)
 
@@ -30,20 +30,19 @@ ChatFactory
 ├── Generator Model (ChatModel) - Generates responses
 ├── Evaluator Model (ChatModel, optional) - Evaluates response quality
 ├── Custom Tools (List[callable | dict]) - Python functions as tools
-├── MCP Client (SyncMultiServerClient from mcp-multi-server, optional) - External MCP tools
+├── MCP Client (SyncMultiServerClient and MultiServerClient from mcp-multi-server, optional) - External MCP capababilities
 └── Tool Conversion System - Converts tools to OpenAI format
 ```
 
 **Main Methods**:
 - `__init__()`: Initializes factory with models, tools, and optional MCP config
-- `chat(message, history)`: Main chat loop with tool calling and evaluation
-- `_convert_tools_to_openai()`: Static method to convert custom tools to OpenAI format
-- `get_chat()`: Returns chat function compatible with Gradio interface
+- `chat(message, history)` and `achat(message, history)`: Main chat loop with tool calling and evaluation
+- `get_chat()` and `get_async_chat()`: Returns chat function compatible with Gradio interface
 
 **Tool Conversion System**:
 Supports three formats for custom tools:
 1. **Just function**: `[func1, func2]` - Auto-generates schema from signature and docstring
-2. **Dict with auto-gen**: `[{"function": func1}]` - Auto-generates schema, optional description override
+2. **Dict with auto-gen**: `[{"function": func1, "description": "custom description"}]` - Auto-generates schema, optional description override
 3. **Dict with manual**: `[{"function": func1, "parameters": {...}}]` - Backward compatible manual schema
 
 **Chat Loop Flow**:
@@ -63,14 +62,15 @@ Supports three formats for custom tools:
 
 **Dependencies**:
 - `models.ChatModel`: Unified LLM interface
-- `schema_utils.extract_function_schema`: Auto-generates JSON schemas from functions
-- `mcp_utils.process_tool_result_content`: Converts MCP results to OpenAI format
+- `schema.extract_function_schema`: Auto-generates JSON schemas from functions
+- `mcp.process_tool_result_content`: Converts MCP results to OpenAI format
+   `mcp_multi_server.MultiServerClient`: Asynchronous MCP client wrapper (external library)
 - `mcp_multi_server.SyncMultiServerClient`: Synchronous MCP client wrapper (external library)
 - `mcp_multi_server.utils.mcp_tools_to_openai_format`: Converts MCP tools to OpenAI format (external library)
 
 ---
 
-### 2. ChatModel (`models.py`)
+### 2. ChatModel (`models.py` and `async_models.py`)
 
 **Purpose**: Unified interface for multiple LLM providers with support for text generation, structured output, and tool calling.
 
@@ -111,7 +111,7 @@ ChatModel
 - Tool results use `user` role with `tool_result` content blocks
 
 **Main Methods**:
-- `generate_response(messages, *, max_tokens, response_format, tools, **kwargs)`:
+- `generate_response. and agenerate_response(messages, *, max_tokens, response_format, tools, **kwargs)`:
   - Returns `str` for text responses
   - Returns Pydantic model instance for structured responses
   - Returns `List[ChatCompletionMessageToolCall]` when tools are called
@@ -130,7 +130,7 @@ ChatModel
 
 ---
 
-### 3. Schema Utilities (`schema_utils.py`)
+### 3. Schema Utilities (`schema.py`)
 
 **Purpose**: Automatic JSON schema generation from Python function signatures and docstrings.
 
@@ -198,17 +198,17 @@ def example(name: str, count: int = 5):
 
 ---
 
-### 4. MCP Utilities (`mcp_utils.py`)
+### 4. MCP Utilities (`mcp.py`)
 
 **Purpose**: Utilities for working with MCP tool results and converting them to OpenAI-compatible formats.
 
 **Key Functions**:
 
-**`process_tool_result_content(tool_result: CallToolResult, verbose: bool = False) -> str`**:
+**`process_tool_result_content(tool_result: CallToolResult, display_content: Optional[Callable] = None) -> str`**:
 - Converts MCP `CallToolResult` to string format suitable for OpenAI tool responses
 - Handles multiple content types (text, image, audio, embedded resources, resource links)
 - Images and audio converted to text descriptions (OpenAI tool messages must be text-only)
-- Optionally displays content to user (with `verbose=True`)
+- Optionally displays content to via UI specific callable
 
 **Content Type Handling**:
 - `TextContent`: Extracts text directly
@@ -218,7 +218,6 @@ def example(name: str, count: int = 5):
 - `ResourceLink`: Creates link description
 
 **Other Functions** (for MCP prompt/resource handling):
-- `handle_content_block()`: Displays content to user (images shown, audio played)
 - `search_and_instantiate_prompt()`: Retrieves and converts MCP prompts to OpenAI messages
 - `search_and_instantiate_resource()`: Retrieves and converts MCP resources to messages
 
@@ -337,8 +336,7 @@ factory = ChatFactory(
 - Handles provider quirks (Anthropic system parameter, tool format differences)
 
 ### 3. Why External mcp-multi-server Library?
-- MCP functionality (SyncMultiServerClient) is useful beyond chat-factory
-- Separate library allows reuse in other projects
+- Multi server MCP functionality (SyncMultiServerClient and MultiServerClient) already provided
 - MCP client is async, but SyncMultiServerClient provides synchronous API for easy integration
 - Background thread + event loop provides clean synchronous API
 - Thread-safe design allows use from any thread
@@ -374,7 +372,7 @@ The codebase includes comprehensive tests:
 
 **MCP**:
 - `mcp`: Model Context Protocol SDK
-- `mcp-multi-server`: External library providing SyncMultiServerClient and multi-server MCP client implementation
+- `mcp-multi-server`: External library providing SyncMultiServerClient and MultiServerClient multi-server MCP client implementation
 
 **Optional**:
 - `gradio`: For building chat UIs (if using `get_chat()`)
@@ -404,8 +402,8 @@ from chat_factory import ChatFactory
 from models import ChatModel
 
 # Initialize models
-generator = ChatModel("gpt-4o", provider="openai")
-evaluator = ChatModel("gpt-4o-mini", provider="openai")
+generator = ChatModel(model_name="gpt-5.2", provider="openai")
+evaluator = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
 
 # Define custom tool
 def get_weather(location: str) -> dict:
