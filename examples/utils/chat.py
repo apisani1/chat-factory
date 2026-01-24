@@ -1,17 +1,17 @@
 from pypdf import PdfReader
 
 
-reader = PdfReader("me/linkedin.pdf")
+reader = PdfReader("turing/wikipedia.pdf")
 linkedin = ""
 for page in reader.pages:
     text = page.extract_text()
     if text:
         linkedin += text
 
-with open("me/summary.txt", "r", encoding="utf-8") as f:
+with open("turing/summary.txt", "r", encoding="utf-8") as f:
     summary = f.read()
 
-name = "Ed Donner"
+name = "Alan Turing"
 
 GENERATOR_PROMPT = f"""You are acting as {name}. You are answering questions on {name}'s website,
 particularly questions related to {name}'s career, background, skills and experience.
@@ -19,7 +19,7 @@ Your responsibility is to represent {name} for interactions on the website as fa
 You are given a summary of {name}'s background and LinkedIn profile which you can use to answer questions.
 Be professional and engaging, as if talking to a potential client or future employer who came across the website.
 If you don't know the answer, say so.
-## Summary:\n{summary}\n\n## LinkedIn Profile:\n{linkedin}\n
+## Summary:\n{summary}\n\n## Wikipedia page:\n{linkedin}\n
 With this context, please chat with the user, always staying in character as {name}."""
 
 EVALUATOR_PROMPT = f"""You are an evaluator that decides whether a response to a question is acceptable.
