@@ -1,6 +1,6 @@
 # Chat Factory Architecture Summary
 
-This document describes the architecture of the `chat_factory` and `sync_mcp_client` modules, providing a comprehensive overview for onboarding in a new repository.
+This document describes the architecture of the `chat_factory` module, providing a comprehensive overview for onboarding in a new repository.
 
 ## Overview
 
@@ -30,7 +30,7 @@ ChatFactory
 ├── Generator Model (ChatModel) - Generates responses
 ├── Evaluator Model (ChatModel, optional) - Evaluates response quality
 ├── Custom Tools (List[callable | dict]) - Python functions as tools
-├── MCP Client (SyncMultiServerClient, optional) - External MCP tools
+├── MCP Client (SyncMultiServerClient from mcp-multi-server, optional) - External MCP tools
 └── Tool Conversion System - Converts tools to OpenAI format
 ```
 
@@ -65,101 +65,12 @@ Supports three formats for custom tools:
 - `models.ChatModel`: Unified LLM interface
 - `schema_utils.extract_function_schema`: Auto-generates JSON schemas from functions
 - `mcp_utils.process_tool_result_content`: Converts MCP results to OpenAI format
-- `sync_mcp_client.SyncMultiServerClient`: Synchronous MCP client wrapper
-- `mcp_multi_server.utils.mcp_tools_to_openai_format`: Converts MCP tools to OpenAI format
+- `mcp_multi_server.SyncMultiServerClient`: Synchronous MCP client wrapper (external library)
+- `mcp_multi_server.utils.mcp_tools_to_openai_format`: Converts MCP tools to OpenAI format (external library)
 
 ---
 
-### 2. SyncMultiServerClient (`sync_mcp_client.py`)
-
-**Purpose**: Synchronous wrapper for the async MCP MultiServerClient, enabling easy integration with synchronous code.
-
-**Key Features**:
-- Runs MCP client in background thread with persistent event loop
-- Provides thread-safe synchronous API for async operations
-- Proper lifecycle management with context manager support
-- Automatic cleanup on program exit via atexit hook
-- Solves "cancel scope in different task" error via long-running lifecycle task
-
-**Architecture**:
-```
-SyncMultiServerClient
-├── Background Thread (daemon)
-│   └── Event Loop (asyncio)
-│       └── Lifecycle Task (_manage_client_lifecycle)
-│           ├── __aenter__ (creates cancel scope in THIS task)
-│           ├── Stay alive until shutdown
-│           └── __aexit__ (exits in SAME task - no errors!)
-│
-├── MCP Client (MultiServerClient)
-│   └── Connected to multiple MCP servers via config
-│
-└── Thread-Safe Methods
-    ├── list_tools() - List available MCP tools
-    ├── call_tool() - Execute tool (blocks until complete)
-    └── shutdown() - Cleanup and stop
-```
-
-**Lifecycle Management**:
-
-The key innovation is the `_manage_client_lifecycle()` long-running task that solves the async context manager problem:
-
-```python
-async def _manage_client_lifecycle(self):
-    """Long-running task managing MCP client context lifecycle."""
-    try:
-        # Enter context (creates cancel scope in THIS task)
-        self.mcp_client = MultiServerClient.from_config(self.config_path)
-        await self.mcp_client.__aenter__()
-
-        # Signal initialization complete
-        self._init_complete.set()
-
-        # Stay alive until shutdown requested
-        # This keeps cancel scope alive in this task
-        while not self._shutdown:
-            await asyncio.sleep(0.1)
-
-    finally:
-        # Exit context in SAME task (no cancel scope error!)
-        if self.mcp_client is not None:
-            await self.mcp_client.__aexit__(None, None, None)
-```
-
-**Why This Design?**
-
-Previous attempts failed because async context managers (`__aenter__`/`__aexit__`) create a cancel scope that must be entered and exited in the **same async task**. By using a long-running lifecycle task:
-1. `__aenter__` creates the cancel scope in the lifecycle task
-2. Task stays alive throughout client lifetime
-3. `__aexit__` runs in the same task (no error!)
-
-**Usage Patterns**:
-
-```python
-# Context manager (recommended)
-with SyncMultiServerClient(config_path) as client:
-    tools = client.list_tools()
-    result = client.call_tool("tool_name", {"arg": "value"})
-
-# Manual lifecycle management
-client = SyncMultiServerClient(config_path)
-tools = client.list_tools()
-# ... use client ...
-client.shutdown()  # Or let atexit handle it
-```
-
-**Thread Safety**:
-All public methods use `asyncio.run_coroutine_threadsafe()` to schedule operations on the background event loop, ensuring thread-safe operation.
-
-**Key Methods**:
-- `__init__(config_path)`: Starts background thread, initializes MCP client, registers atexit cleanup
-- `list_tools()`: Returns `ListToolsResult` with available MCP tools (synchronous access)
-- `call_tool(name, args)`: Executes tool and returns `CallToolResult` (blocks until complete)
-- `shutdown()`: Graceful cleanup (safe to call multiple times)
-
----
-
-### 3. ChatModel (`models.py`)
+### 2. ChatModel (`models.py`)
 
 **Purpose**: Unified interface for multiple LLM providers with support for text generation, structured output, and tool calling.
 
@@ -219,7 +130,7 @@ ChatModel
 
 ---
 
-### 4. Schema Utilities (`schema_utils.py`)
+### 3. Schema Utilities (`schema_utils.py`)
 
 **Purpose**: Automatic JSON schema generation from Python function signatures and docstrings.
 
@@ -287,7 +198,7 @@ def example(name: str, count: int = 5):
 
 ---
 
-### 5. MCP Utilities (`mcp_utils.py`)
+### 4. MCP Utilities (`mcp_utils.py`)
 
 **Purpose**: Utilities for working with MCP tool results and converting them to OpenAI-compatible formats.
 
@@ -328,7 +239,7 @@ ChatModel.generate_response(messages, tools=openai_tools)
     ↓
 ChatFactory.handle_tool_call(tool_calls)
     ├── Custom Tool? → Execute from tool_map
-    └── MCP Tool? → SyncMultiServerClient.call_tool()
+    └── MCP Tool? → SyncMultiServerClient.call_tool() [external: mcp-multi-server]
                         ↓
                     MCP Server (via background thread)
                         ↓
@@ -425,10 +336,11 @@ factory = ChatFactory(
 - Easy to add new providers
 - Handles provider quirks (Anthropic system parameter, tool format differences)
 
-### 3. Why SyncMultiServerClient?
-- MCP client is async, but many applications are synchronous
+### 3. Why External mcp-multi-server Library?
+- MCP functionality (SyncMultiServerClient) is useful beyond chat-factory
+- Separate library allows reuse in other projects
+- MCP client is async, but SyncMultiServerClient provides synchronous API for easy integration
 - Background thread + event loop provides clean synchronous API
-- Long-running lifecycle task solves cancel scope problem elegantly
 - Thread-safe design allows use from any thread
 
 ### 4. Why Automatic Schema Generation?
@@ -462,7 +374,7 @@ The codebase includes comprehensive tests:
 
 **MCP**:
 - `mcp`: Model Context Protocol SDK
-- `mcp-multi-server`: Multi-server MCP client implementation
+- `mcp-multi-server`: External library providing SyncMultiServerClient and multi-server MCP client implementation
 
 **Optional**:
 - `gradio`: For building chat UIs (if using `get_chat()`)
@@ -470,21 +382,20 @@ The codebase includes comprehensive tests:
 ## Future Enhancements
 
 Potential improvements:
-1. **Streaming support**: Add streaming response generation
-2. **Conversation persistence**: Save/load conversation history
-3. **Tool result caching**: Cache deterministic tool results
-4. **Parallel tool execution**: Execute independent tool calls in parallel
-5. **Retry with exponential backoff**: Handle rate limits gracefully
-6. **Token usage tracking**: Monitor and log token consumption
-7. **Custom evaluator prompts**: Per-tool or per-conversation evaluator customization
+1. **Conversation persistence**: Save/load conversation history
+2. **Tool result caching**: Cache deterministic tool results
+3. **Parallel tool execution**: Execute independent tool calls in parallel
+4. **Retry with exponential backoff**: Handle rate limits gracefully
+5. **Token usage tracking**: Monitor and log token consumption
+6. **Custom evaluator prompts**: Per-tool or per-conversation evaluator customization
 
 ## Common Pitfalls
 
-1. **MCP client not properly shutdown**: Always use context manager or call `shutdown()`
-2. **Tool name conflicts**: Custom tools and MCP tools with same name → MCP tool wins
-3. **Missing docstrings**: Auto-schema generation warns but may produce poor descriptions
-4. **Tool result format**: Must return dict or string; complex objects may cause issues
-5. **Anthropic max_tokens**: Required parameter (defaults to 10000); OpenAI doesn't need it
+1. **Tool name conflicts**: Custom tools and MCP tools with same name → custom tool wins (tools registered first take precedence)
+2. **Missing docstrings**: Auto-schema generation warns but may produce poor descriptions
+3. **Tool result format**: Must return dict or string; complex objects may cause issues
+4. **Anthropic max_tokens**: Required parameter (defaults to 10000); OpenAI doesn't need it
+5. **MCP configuration path**: Must be absolute or relative to current working directory
 
 ## Example Usage
 
