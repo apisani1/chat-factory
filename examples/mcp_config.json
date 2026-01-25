@@ -1,7 +1,7 @@
 {
     "mcpServers": {
     "todo_server": {
-      "command": "/Users/antonio/.local/bin/uv",
+      "command": "/Users/antonio/.local/bin/poetry",
       "args": [
         "run",
         "--directory",
@@ -12,7 +12,7 @@
       ]
     },
     "tool_server": {
-      "command": "/Users/antonio/.local/bin/uv",
+      "command": "/Users/antonio/.local/bin/poetry",
       "args": [
         "run",
         "--directory",
@@ -23,7 +23,7 @@
       ]
     },
     "prompt_server": {
-      "command": "/Users/antonio/.local/bin/uv",
+      "command": "/Users/antonio/.local/bin/poetry",
       "args": [
         "run",
         "--directory",
@@ -34,7 +34,7 @@
       ]
     },
     "resource_server": {
-      "command": "/Users/antonio/.local/bin/uv",
+      "command": "/Users/antonio/.local/bin/poetry",
       "args": [
         "run",
         "--directory",
