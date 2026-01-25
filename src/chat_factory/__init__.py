@@ -11,7 +11,7 @@ from chat_factory.utils.schema import (
 )
 
 
-__version__ = "0.0.0"
+__version__ = "0.1.0b1"
 
 
 __all__ = [
