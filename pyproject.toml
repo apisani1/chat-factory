@@ -3,7 +3,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [project]
-name = "chat-factory"
+name = "llm-chat-factory"
 version = "0.1.0"
 description = "A short description of the project"
 authors = [{ name = "Antonio Pisani", email = "antonio.pisani@gmail.com" }]
@@ -33,7 +33,7 @@ chat_factory = "chat_factory.main:main"
 "Issue Tracker" = "https://github.com/apisani1/chat-factory/issues"
 
 [tool.poetry]
-name = "chat-factory"
+name = "llm-chat-factory"
 version = "0.1.0b1"
 description = "Python framework for building LLM-powered chat applications"
 authors = ["Antonio Pisani <antonio.pisani@gmail.com>"]

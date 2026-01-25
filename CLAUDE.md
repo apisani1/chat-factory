@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**chat-factory** is a flexible Python framework for building LLM-powered chat applications with advanced capabilities:
+**llm-chat-factory** is a flexible Python framework for building LLM-powered chat applications with advanced capabilities:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic, Google, DeepSeek, Groq, Ollama
 - **Tool calling**: Custom Python functions as tools with automatic schema generation

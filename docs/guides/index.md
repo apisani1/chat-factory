@@ -1,6 +1,6 @@
 # User Guides
 
-This section contains comprehensive step-by-step guides for working with chat-factory.
+This section contains comprehensive step-by-step guides for working with llm-chat-factory.
 
 ## Installation
 
@@ -9,7 +9,7 @@ This section contains comprehensive step-by-step guides for working with chat-fa
 Install the latest version from PyPI:
 
 ```bash
-pip install chat-factory
+pip install llm-chat-factory
 ```
 
 ### Using Poetry
@@ -17,7 +17,7 @@ pip install chat-factory
 If you use Poetry for dependency management:
 
 ```bash
-poetry add chat-factory
+poetry add llm-chat-factory
 ```
 
 ### Development Installation
@@ -176,7 +176,7 @@ print(response)
 
 ### Tool Schema Formats
 
-chat-factory supports three formats for tool registration:
+llm-chat-factory supports three formats for tool registration:
 
 **1. Auto-generation (Recommended)**
 

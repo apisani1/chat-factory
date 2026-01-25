@@ -1,10 +1,10 @@
-# chat-factory Documentation
+# llm-chat-factory Documentation
 
-Welcome to the chat-factory documentation! This is a flexible Python framework for building LLM-powered chat applications with advanced capabilities.
+Welcome to the llm-chat-factory documentation! This is a flexible Python framework for building LLM-powered chat applications with advanced capabilities.
 
-## What is chat-factory?
+## What is llm-chat-factory?
 
-**chat-factory** s a comprehensive framework for building LLM-powered chatbot applications with:
+**llm-chat-factory** is a comprehensive framework for building LLM-powered chatbot applications with:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Groq, Ollama
 - **Tool calling**: Register custom Python functions as tools with automatic schema generation
@@ -14,7 +14,7 @@ Welcome to the chat-factory documentation! This is a flexible Python framework f
 - **Streaming support**: Real-time response streaming for better user experience
 - **Sync & Async**: Both synchronous and asynchronous implementations for different use cases
 
-## Why chat-factory?
+## Why llm-chat-factory?
 
 Building production-ready LLM applications involves many challenges:
 
@@ -23,11 +23,11 @@ Building production-ready LLM applications involves many challenges:
 - **Quality assurance**: You need to ensure responses meet your quality standards
 - **Developer experience**: You want clean, simple APIs with sensible defaults
 
-chat-factory solves these challenges with a clean, extensible architecture that handles the complexity for you.
+llm-chat-factory solves these challenges with a clean, extensible architecture that handles the complexity for you.
 
 ## Quick Example
 
-Here's a simple example showing the power of chat-factory:
+Here's a simple example showing the power of llm-chat-factory:
 
 ```python
 from chat_factory import ChatFactory
@@ -60,13 +60,13 @@ print(response)
 Install via pip:
 
 ```bash
-pip install chat-factory
+pip install llm-chat-factory
 ```
 
 Or with Poetry:
 
 ```bash
-poetry add chat-factory
+poetry add llm-chat-factory
 ```
 
 ## Key Concepts
@@ -127,7 +127,7 @@ See the [Architecture Guide](https://github.com/apisani1/chat-factory/blob/main/
 
 ## Use Cases
 
-chat-factory is perfect for:
+llm-chat-factory is perfect for:
 
 - **AI Chat Assistants**: Build conversational AI with custom capabilities
 - **AI Agents**: Create agents that interact with external tools and APIs
@@ -165,5 +165,5 @@ API Reference <api/modules>
 :caption: Useful Links
 
 GitHub Repository <https://github.com/apisani1/chat-factory>
-PyPI Package <https://pypi.org/project/chat_factory/>
+PyPI Package <https://pypi.org/project/llm-chat-factory/>
 Issue Tracker <https://github.com/apisani1/chat-factory/issues>

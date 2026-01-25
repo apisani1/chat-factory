@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 
 
-project = "chat-factory"
+project = "llm-chat-factory"
 copyright = f"{datetime.now().year}, Antonio Pisani"
 author = "Antonio Pisani"
 release = "0.1.0"
@@ -50,9 +50,9 @@ extensions = [
     "sphinx_copybutton",
     "sphinx.ext.githubpages",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.autosummary",    # Creates summary tables for modules/classes
-    "sphinx_sitemap",            # Generates sitemap for search engines
-    "sphinx_tabs.tabs",          # For tabbed code examples
+    "sphinx.ext.autosummary",  # Creates summary tables for modules/classes
+    "sphinx_sitemap",  # Generates sitemap for search engines
+    "sphinx_tabs.tabs",  # For tabbed code examples
 ]
 
 # Configure autosummary for API docs generation
@@ -143,9 +143,11 @@ suppress_warnings = [
     "ref.*",  # Suppress all reference warnings
 ]
 
+
 # Add custom CSS
 def setup(app):  # type: ignore
     app.add_css_file("custom.css")
+
 
 from unittest.mock import MagicMock
 
@@ -155,20 +157,18 @@ autoclass_content = "both"  # Include both class and __init__ docstrings
 autodoc_member_order = "bysource"  # Keep same order as in the source code
 
 # Simple mocking for straightforward imports
-autodoc_mock_imports = [  # type: ignore
-    
-]
+autodoc_mock_imports = []  # type: ignore
+
 
 # For more complex mocking where simple mocking isn't sufficient
 class Mock(MagicMock):
     @classmethod
-    def __getattr__(cls, name): # type: ignore
+    def __getattr__(cls, name):  # type: ignore
         return MagicMock()
 
+
 # Complex modules that need special handling
-MOCK_MODULES = [  # type: ignore
-    
-]
+MOCK_MODULES = []  # type: ignore
 
 # Only update sys.modules if there are modules to mock
 if MOCK_MODULES:

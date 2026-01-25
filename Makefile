@@ -238,7 +238,7 @@ help-release:
 ######################
 
 help:
-	@echo '====== chat-factory Development Tool ======'
+	@echo '====== llm-chat-factory Development Tool ======'
 	@echo ''
 	@echo 'Environment:'
 	@echo '  make install              - Install core dependencies'

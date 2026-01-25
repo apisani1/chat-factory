@@ -4,7 +4,7 @@ This document describes the architecture of the `chat_factory` library, providin
 
 ## Overview
 
-The chat-factory project provides a flexible framework for building LLM-powered chat applications with:
+The llm-chat-factory project provides a flexible framework for building LLM-powered chat applications with:
 - Multi-provider LLM support (OpenAI, Anthropic, Google, DeepSeek, Groq, Ollama)
 - Tool calling / function calling capabilities
 - MCP (Model Context Protocol) integration for external tools, prompts and resources
@@ -437,7 +437,7 @@ response = factory.chat("How about New York?", history)
 
 ## Summary
 
-The chat-factory architecture provides:
+The llm-chat-factory architecture provides:
 - **Flexibility**: Multiple LLM providers, custom and MCP tools
 - **Simplicity**: Clean APIs with sensible defaults
 - **Robustness**: Comprehensive error handling and testing

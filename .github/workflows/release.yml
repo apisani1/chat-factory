@@ -111,7 +111,7 @@ jobs:
           source test_env/bin/activate
           pip install --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple \
-              chat_factory
+              llm-chat-factory
           SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
           export PYTHONPATH="${SITE_PACKAGES}:${PYTHONPATH:-}"
           python -c "import chat_factory; print('Installed version: ' + chat_factory.__version__)"

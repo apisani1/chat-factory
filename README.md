@@ -1,14 +1,14 @@
-# chat-factory
+# llm-chat-factory
 
 A flexible Python framework for building LLM-powered chat applications with advanced capabilities including multi-provider support, tool calling, MCP integration, and quality control.
 
 [![Documentation Status](https://readthedocs.org/projects/chat-factory/badge/?version=latest)](https://chat-factory.readthedocs.io/en/latest/?badge=latest)
-[![PyPI version](https://badge.fury.io/py/chat-factory.svg)](https://pypi.org/project/chat-factory/)
+[![PyPI version](https://badge.fury.io/py/llm-chat-factory.svg)](https://pypi.org/project/llm-chat-factory/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ## Overview
 
-**chat-factory** is a comprehensive framework for building LLM-powered chatbot applications with:
+**llm-chat-factory** is a comprehensive framework for building LLM-powered chatbot applications with:
 
 - **Multi-provider LLM support**: OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Groq, Ollama
 - **Tool calling**: Custom Python functions as tools with automatic schema generation
@@ -29,13 +29,13 @@ A flexible Python framework for building LLM-powered chat applications with adva
 ## Installation
 
 ```bash
-pip install chat-factory
+pip install llm-chat-factory
 ```
 
 Or, if you use Poetry:
 
 ```bash
-poetry add chat-factory
+poetry add llm-chat-factory
 ```
 
 ## Quick Start
@@ -340,7 +340,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Links
 
 - [Documentation](https://chat-factory.readthedocs.io/)
-- [PyPI Package](https://pypi.org/project/chat-factory/)
+- [PyPI Package](https://pypi.org/project/llm-chat-factory/)
 - [GitHub Repository](https://github.com/apisani1/chat-factory)
 - [Issue Tracker](https://github.com/apisani1/chat-factory/issues)
 - [Release Notes](https://github.com/apisani1/chat-factory/releases)

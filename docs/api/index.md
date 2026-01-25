@@ -1,6 +1,6 @@
 # API Reference
 
-This section contains the complete API documentation for chat-factory, automatically generated from the source code docstrings.
+This section contains the complete API documentation for llm-chat-factory, automatically generated from the source code docstrings.
 
 ## Core Modules
 

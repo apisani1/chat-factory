@@ -641,7 +641,7 @@ function help:release {
 function help {
     echo "$0 <task> <args>"
     echo ""
-    echo "====== chat-factory Development Tool ======"
+    echo "====== llm-chat-factory Development Tool ======"
     echo ""
     echo "Environment:"
     echo "  install              - Install core dependencies"
